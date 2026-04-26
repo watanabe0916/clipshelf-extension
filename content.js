@@ -88,9 +88,25 @@ function normalizeUiPosition(value) {
 }
 
 function createTrackedObjectUrl(blob) {
+    if (!(blob instanceof Blob)) {
+        return null;
+    }
+
     const objectUrl = URL.createObjectURL(blob);
     uiState.objectUrls.add(objectUrl);
     return objectUrl;
+}
+
+function resolveScreenshotImageSource(screenshot) {
+    if (!screenshot || typeof screenshot !== 'object') {
+        return null;
+    }
+
+    if (typeof screenshot.imageDataUrl === 'string' && screenshot.imageDataUrl.startsWith('data:')) {
+        return screenshot.imageDataUrl;
+    }
+
+    return createTrackedObjectUrl(screenshot.imageBlob);
 }
 
 function closeLightbox() {
@@ -692,7 +708,12 @@ function renderNoActiveGroupState(panelBody, model) {
 }
 
 function openLightbox(screenshot) {
-    if (!uiState.shadowRoot || !screenshot || !screenshot.imageBlob) {
+    if (!uiState.shadowRoot || !screenshot) {
+        return;
+    }
+
+    const imageSource = resolveScreenshotImageSource(screenshot);
+    if (!imageSource) {
         return;
     }
 
@@ -708,9 +729,8 @@ function openLightbox(screenshot) {
     image.className = 'lightbox-image';
     image.alt = 'SnapShelf saved image';
 
-    const imageUrl = createTrackedObjectUrl(screenshot.imageBlob);
-    uiState.lightboxUrl = imageUrl;
-    image.src = imageUrl;
+    image.src = imageSource;
+    uiState.lightboxUrl = imageSource.startsWith('blob:') ? imageSource : null;
 
     const actions = document.createElement('div');
     actions.className = 'lightbox-actions';
@@ -838,7 +858,13 @@ function renderActiveGroupState(panelBody, model) {
             image.loading = 'lazy';
             image.decoding = 'async';
             image.alt = 'Saved screenshot thumbnail';
-            image.src = createTrackedObjectUrl(screenshot.imageBlob);
+
+            const imageSource = resolveScreenshotImageSource(screenshot);
+            if (imageSource) {
+                image.src = imageSource;
+            } else {
+                image.alt = '画像データを読み込めません';
+            }
 
             const deleteButton = document.createElement('button');
             deleteButton.type = 'button';

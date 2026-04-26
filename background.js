@@ -171,6 +171,30 @@ async function dataUrlToBlob(dataUrl) {
     return response.blob();
 }
 
+function arrayBufferToBase64(arrayBuffer) {
+    const bytes = new Uint8Array(arrayBuffer);
+    const chunkSize = 0x8000;
+    let binary = '';
+
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+        const chunk = bytes.subarray(index, index + chunkSize);
+        binary += String.fromCharCode(...chunk);
+    }
+
+    return btoa(binary);
+}
+
+async function blobToDataUrl(blob) {
+    if (!(blob instanceof Blob)) {
+        return null;
+    }
+
+    const arrayBuffer = await blob.arrayBuffer();
+    const base64 = arrayBufferToBase64(arrayBuffer);
+    const mimeType = blob.type || 'image/png';
+    return `data:${mimeType};base64,${base64}`;
+}
+
 async function cropDataUrlToBlob(dataUrl, selection) {
     const sourceBlob = await dataUrlToBlob(dataUrl);
     const bitmap = await createImageBitmap(sourceBlob);
@@ -258,6 +282,15 @@ async function buildUiModel() {
         .sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt || a.name.localeCompare(b.name));
 
     const screenshots = activeGroupId ? await self.SnapShelfDB.getScreenshotsByGroup(activeGroupId) : [];
+    const screenshotsForUi = await Promise.all(
+        screenshots.map(async (screenshot) => ({
+            id: screenshot.id,
+            groupId: screenshot.groupId,
+            pageUrl: screenshot.pageUrl || '',
+            timestamp: screenshot.timestamp,
+            imageDataUrl: await blobToDataUrl(screenshot.imageBlob),
+        })),
+    );
 
     return {
         isUiOpen: state.isUiOpen,
@@ -271,7 +304,7 @@ async function buildUiModel() {
                 count: countsByGroupId[activeGroupId] || 0,
             }
             : null,
-        screenshots,
+        screenshots: screenshotsForUi,
     };
 }
 
