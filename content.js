@@ -140,11 +140,11 @@ function applyUiHostPosition() {
     }
 
     if (uiState.uiPosition === 'top') {
-        uiState.hostElement.style.top = '12px';
+        uiState.hostElement.style.top = '8px';
         uiState.hostElement.style.bottom = '';
     } else {
         uiState.hostElement.style.top = '';
-        uiState.hostElement.style.bottom = '12px';
+        uiState.hostElement.style.bottom = '8px';
     }
 }
 
@@ -200,7 +200,7 @@ function ensureUiHost() {
 			backdrop-filter: blur(4px);
 			display: flex;
 			flex-direction: column;
-			max-height: min(48vh, 430px);
+            max-height: min(34vh, 300px);
 			overflow: hidden;
 		}
 
@@ -208,41 +208,47 @@ function ensureUiHost() {
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
-			padding: 12px 14px;
+            padding: 7px 10px;
 			border-bottom: 1px solid var(--line);
 			background: linear-gradient(90deg, rgba(255, 255, 255, 0.55) 0%, rgba(239, 246, 255, 0.72) 100%);
-			font-size: 14px;
+            font-size: 13px;
 			font-weight: 700;
 			letter-spacing: 0.02em;
 		}
 
+        .panel-title {
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
 		.panel-pos {
-			font-size: 11px;
+            font-size: 10px;
 			color: var(--muted);
 			font-weight: 600;
 			background: rgba(255, 255, 255, 0.85);
 			border: 1px solid var(--line);
 			border-radius: 999px;
-			padding: 2px 8px;
+            padding: 1px 6px;
 		}
 
 		.panel-body {
-			padding: 12px;
+            padding: 8px;
 			overflow: auto;
 			display: grid;
-			gap: 12px;
+            gap: 8px;
 		}
 
 		.section {
 			border: 1px solid var(--line);
-			border-radius: 12px;
-			padding: 10px;
+            border-radius: 10px;
+            padding: 8px;
 			background: var(--card);
 		}
 
 		.section-title {
-			margin: 0 0 10px;
-			font-size: 13px;
+            margin: 0 0 6px;
+            font-size: 12px;
 			color: var(--muted);
 			font-weight: 700;
 			letter-spacing: 0.01em;
@@ -251,18 +257,40 @@ function ensureUiHost() {
 		.inline-row {
 			display: flex;
 			align-items: center;
-			gap: 8px;
+            gap: 6px;
 			flex-wrap: wrap;
 		}
 
+        .active-group-row {
+            justify-content: space-between;
+            flex-wrap: nowrap;
+            min-width: 0;
+        }
+
+        .active-group-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .active-group-actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
 		.input,
 		.rename-input {
-			min-width: 160px;
+            min-width: 140px;
 			flex: 1;
 			border: 1px solid #cdd8e9;
 			border-radius: 9px;
-			padding: 8px 10px;
-			font-size: 13px;
+            padding: 7px 9px;
+            font-size: 12px;
 			color: var(--ink);
 			background: rgba(255, 255, 255, 0.92);
 		}
@@ -277,8 +305,8 @@ function ensureUiHost() {
 		.btn {
 			border: 1px solid transparent;
 			border-radius: 9px;
-			padding: 7px 11px;
-			font-size: 12px;
+            padding: 6px 9px;
+            font-size: 11px;
 			font-weight: 700;
 			cursor: pointer;
 			transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
@@ -315,16 +343,16 @@ function ensureUiHost() {
 
 		.group-list {
 			display: grid;
-			gap: 8px;
+            gap: 6px;
 		}
 
 		.group-item {
 			border: 1px solid #d5dfef;
 			background: rgba(255, 255, 255, 0.9);
 			border-radius: 10px;
-			padding: 9px;
+            padding: 7px;
 			display: grid;
-			gap: 8px;
+            gap: 6px;
 			cursor: pointer;
 		}
 
@@ -337,7 +365,7 @@ function ensureUiHost() {
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
-			gap: 8px;
+            gap: 6px;
 			min-width: 0;
 		}
 
@@ -345,14 +373,14 @@ function ensureUiHost() {
 			overflow: hidden;
 			text-overflow: ellipsis;
 			white-space: nowrap;
-			font-size: 14px;
+            font-size: 13px;
 			font-weight: 700;
 		}
 
 		.count-pill {
-			font-size: 11px;
+            font-size: 10px;
 			border-radius: 999px;
-			padding: 2px 8px;
+            padding: 1px 7px;
 			background: rgba(15, 118, 110, 0.14);
 			color: #0b5e58;
 			border: 1px solid rgba(15, 118, 110, 0.22);
@@ -362,14 +390,20 @@ function ensureUiHost() {
 
 		.group-controls {
 			display: flex;
-			gap: 6px;
+            gap: 5px;
 			flex-wrap: wrap;
 		}
 
 		.thumb-grid {
 			display: grid;
-			grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-			gap: 9px;
+            grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+            gap: 8px;
+        }
+
+        .thumb-scroll {
+            max-height: 132px;
+            overflow-y: auto;
+            padding-right: 2px;
 		}
 
 		.thumb-item {
@@ -383,7 +417,7 @@ function ensureUiHost() {
 
 		.thumb-item img {
 			width: 100%;
-			height: 88px;
+            height: 80px;
 			object-fit: cover;
 			display: block;
 			background: #f1f5f9;
@@ -391,8 +425,8 @@ function ensureUiHost() {
 
 		.thumb-meta {
 			display: block;
-			padding: 4px 6px 6px;
-			font-size: 10px;
+            padding: 3px 5px 5px;
+            font-size: 9px;
 			color: #64748b;
 			text-overflow: ellipsis;
 			overflow: hidden;
@@ -499,23 +533,36 @@ function ensureUiHost() {
 
 		@media (max-width: 680px) {
 			.panel {
-				max-height: 55vh;
+                max-height: 50vh;
 			}
 
 			.thumb-grid {
 				grid-template-columns: repeat(auto-fill, minmax(94px, 1fr));
 			}
 
+            .thumb-scroll {
+                max-height: 114px;
+            }
+
 			.thumb-item img {
-				height: 74px;
+                height: 68px;
 			}
 
 			.btn {
-				padding: 7px 10px;
+                padding: 6px 8px;
 			}
 
 			.panel-header {
-				padding: 10px 12px;
+                padding: 6px 8px;
+            }
+
+            .active-group-row {
+                flex-wrap: wrap;
+            }
+
+            .active-group-actions {
+                width: 100%;
+                justify-content: flex-start;
 			}
 		}
 	`;
@@ -782,7 +829,24 @@ function renderActiveGroupState(panelBody, model) {
     titleSection.className = 'section';
 
     const titleRow = document.createElement('div');
-    titleRow.className = 'inline-row';
+    titleRow.className = 'inline-row active-group-row';
+
+    const endSaveButton = createButton('Stop saving', 'btn secondary', () => {
+        void withUiMutation(async () => {
+            await sendRuntimeMessage(MESSAGE_TYPES.END_SAVE_MODE);
+        });
+    });
+
+    const deleteGroupButton = createButton('Delete this shelf', 'btn danger', () => {
+        const confirmed = window.confirm('Delete this shelf. Saved images will also be deleted.');
+        if (!confirmed) {
+            return;
+        }
+
+        void withUiMutation(async () => {
+            await sendRuntimeMessage(MESSAGE_TYPES.DELETE_GROUP, { groupId: activeGroup.id });
+        });
+    });
 
     if (uiState.editingGroupId === activeGroup.id) {
         const renameInput = document.createElement('input');
@@ -815,7 +879,11 @@ function renderActiveGroupState(panelBody, model) {
             }
         });
 
-        titleRow.append(renameInput, saveRename, cancelRename);
+        const editActions = document.createElement('div');
+        editActions.className = 'active-group-actions';
+        editActions.append(saveRename, cancelRename, endSaveButton, deleteGroupButton);
+
+        titleRow.append(renameInput, editActions);
     } else {
         const groupTitle = document.createElement('strong');
         groupTitle.className = 'group-name';
@@ -830,7 +898,15 @@ function renderActiveGroupState(panelBody, model) {
             renderUiPanel();
         });
 
-        titleRow.append(groupTitle, count, renameButton);
+        const meta = document.createElement('div');
+        meta.className = 'active-group-meta';
+        meta.append(groupTitle, count);
+
+        const actions = document.createElement('div');
+        actions.className = 'active-group-actions';
+        actions.append(renameButton, endSaveButton, deleteGroupButton);
+
+        titleRow.append(meta, actions);
     }
 
     titleSection.appendChild(titleRow);
@@ -841,7 +917,7 @@ function renderActiveGroupState(panelBody, model) {
 
     const screenshotsTitle = document.createElement('h3');
     screenshotsTitle.className = 'section-title';
-    screenshotsTitle.textContent = 'Saved screenshots';
+    screenshotsTitle.textContent = 'Saved images';
     screenshotsSection.appendChild(screenshotsTitle);
 
     const screenshots = Array.isArray(model.screenshots) ? model.screenshots : [];
@@ -861,7 +937,7 @@ function renderActiveGroupState(panelBody, model) {
             const image = document.createElement('img');
             image.loading = 'lazy';
             image.decoding = 'async';
-            image.alt = 'Saved screenshot thumbnail';
+            image.alt = 'Saved image thumbnail';
 
             const imageSource = resolveScreenshotImageSource(screenshot);
             if (imageSource) {
@@ -896,37 +972,13 @@ function renderActiveGroupState(panelBody, model) {
             grid.appendChild(item);
         });
 
-        screenshotsSection.appendChild(grid);
+        const scroll = document.createElement('div');
+        scroll.className = 'thumb-scroll';
+        scroll.appendChild(grid);
+        screenshotsSection.appendChild(scroll);
     }
 
     panelBody.appendChild(screenshotsSection);
-
-    const footer = document.createElement('section');
-    footer.className = 'section';
-
-    const actions = document.createElement('div');
-    actions.className = 'footer-actions';
-
-    const endSaveButton = createButton('Stop saving', 'btn secondary', () => {
-        void withUiMutation(async () => {
-            await sendRuntimeMessage(MESSAGE_TYPES.END_SAVE_MODE);
-        });
-    });
-
-    const deleteGroupButton = createButton('Delete this shelf', 'btn danger', () => {
-        const confirmed = window.confirm('Delete this shelf. Saved images will also be deleted.');
-        if (!confirmed) {
-            return;
-        }
-
-        void withUiMutation(async () => {
-            await sendRuntimeMessage(MESSAGE_TYPES.DELETE_GROUP, { groupId: activeGroup.id });
-        });
-    });
-
-    actions.append(endSaveButton, deleteGroupButton);
-    footer.appendChild(actions);
-    panelBody.appendChild(footer);
 }
 
 function renderUiPanel() {
@@ -944,6 +996,7 @@ function renderUiPanel() {
     header.className = 'panel-header';
 
     const title = document.createElement('span');
+    title.className = 'panel-title';
     title.textContent = 'ClipShelf';
 
     const positionLabel = document.createElement('span');
