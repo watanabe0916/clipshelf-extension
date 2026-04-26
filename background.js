@@ -8,18 +8,18 @@ const STORAGE_DEFAULTS = {
 };
 
 const MESSAGE_TYPES = {
-    CAPTURE_SELECTION: 'SNAPSHELF_CAPTURE_SELECTION',
-    GET_UI_MODEL: 'SNAPSHELF_GET_UI_MODEL',
-    CREATE_GROUP: 'SNAPSHELF_CREATE_GROUP',
-    RENAME_GROUP: 'SNAPSHELF_RENAME_GROUP',
-    DELETE_GROUP: 'SNAPSHELF_DELETE_GROUP',
-    SET_ACTIVE_GROUP: 'SNAPSHELF_SET_ACTIVE_GROUP',
-    END_SAVE_MODE: 'SNAPSHELF_END_SAVE_MODE',
-    DELETE_SCREENSHOT: 'SNAPSHELF_DELETE_SCREENSHOT',
+    CAPTURE_SELECTION: 'CLIPSHELF_CAPTURE_SELECTION',
+    GET_UI_MODEL: 'CLIPSHELF_GET_UI_MODEL',
+    CREATE_GROUP: 'CLIPSHELF_CREATE_GROUP',
+    RENAME_GROUP: 'CLIPSHELF_RENAME_GROUP',
+    DELETE_GROUP: 'CLIPSHELF_DELETE_GROUP',
+    SET_ACTIVE_GROUP: 'CLIPSHELF_SET_ACTIVE_GROUP',
+    END_SAVE_MODE: 'CLIPSHELF_END_SAVE_MODE',
+    DELETE_SCREENSHOT: 'CLIPSHELF_DELETE_SCREENSHOT',
 };
 
 const EVENT_TYPES = {
-    SCREENSHOT_SAVED: 'SNAPSHELF_SCREENSHOT_SAVED',
+    SCREENSHOT_SAVED: 'CLIPSHELF_SCREENSHOT_SAVED',
 };
 
 const HANDLED_MESSAGE_TYPES = new Set(Object.values(MESSAGE_TYPES));
@@ -266,7 +266,7 @@ async function persistCapturedSelection(payload, sender) {
     const dataUrl = await captureVisibleTab(sender?.tab?.windowId, { format: 'png' });
     const imageBlob = await cropDataUrlToBlob(dataUrl, selection);
 
-    await self.SnapShelfDB.addScreenshot({
+    await self.ClipShelfDB.addScreenshot({
         groupId: activeGroupId,
         imageBlob,
         pageUrl,
@@ -292,7 +292,7 @@ async function buildUiModel() {
     }
 
     const groupIds = Object.keys(groupsMetadata);
-    const countsByGroupId = await self.SnapShelfDB.getScreenshotCountsByGroupIds(groupIds);
+    const countsByGroupId = await self.ClipShelfDB.getScreenshotCountsByGroupIds(groupIds);
 
     const groups = groupIds
         .map((groupId) => ({
@@ -304,7 +304,7 @@ async function buildUiModel() {
         }))
         .sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt || a.name.localeCompare(b.name));
 
-    const screenshots = activeGroupId ? await self.SnapShelfDB.getScreenshotsByGroup(activeGroupId) : [];
+    const screenshots = activeGroupId ? await self.ClipShelfDB.getScreenshotsByGroup(activeGroupId) : [];
     const screenshotsForUi = await Promise.all(
         screenshots.map(async (screenshot) => ({
             id: screenshot.id,
@@ -414,7 +414,7 @@ async function deleteGroup(payload) {
 
     await Promise.all([
         setStorage(nextStorage),
-        self.SnapShelfDB.deleteScreenshotsByGroup(groupId),
+        self.ClipShelfDB.deleteScreenshotsByGroup(groupId),
     ]);
 
     return { deleted: true };
@@ -426,7 +426,7 @@ async function deleteScreenshot(payload) {
         throw new Error('A valid screenshot id is required.');
     }
 
-    await self.SnapShelfDB.deleteScreenshotById(id);
+    await self.ClipShelfDB.deleteScreenshotById(id);
     return { deleted: true };
 }
 
@@ -489,7 +489,7 @@ async function initializeStorageDefaults() {
             }
         }
     } catch (error) {
-        console.error('Failed to initialize SnapShelf storage defaults:', error);
+        console.error('Failed to initialize ClipShelf storage defaults:', error);
     }
 }
 
@@ -511,7 +511,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse({ ok: true, data });
         })
         .catch((error) => {
-            console.error('SnapShelf message handling failed:', error);
+            console.error('ClipShelf message handling failed:', error);
             sendResponse({
                 ok: false,
                 error: error?.message || 'Failed to process request.',
@@ -529,7 +529,7 @@ if (chrome.action?.onClicked) {
 
 void initializeStorageDefaults();
 
-self.SnapShelfBackground = {
+self.ClipShelfBackground = {
     initializeStorageDefaults,
     STORAGE_DEFAULTS,
     MESSAGE_TYPES,

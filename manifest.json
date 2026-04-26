@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "SnapShelf",
+    "name": "ClipShelf",
     "version": "0.1.0",
     "description": "Save cropped screenshots and page URLs into named groups.",
     "permissions": [
@@ -13,7 +13,7 @@
         "<all_urls>"
     ],
     "action": {
-        "default_title": "SnapShelf"
+        "default_title": "ClipShelf"
     },
     "background": {
         "service_worker": "background.js"

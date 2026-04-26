@@ -1,16 +1,16 @@
 const MESSAGE_TYPES = {
-    CAPTURE_SELECTION: 'SNAPSHELF_CAPTURE_SELECTION',
-    GET_UI_MODEL: 'SNAPSHELF_GET_UI_MODEL',
-    CREATE_GROUP: 'SNAPSHELF_CREATE_GROUP',
-    RENAME_GROUP: 'SNAPSHELF_RENAME_GROUP',
-    DELETE_GROUP: 'SNAPSHELF_DELETE_GROUP',
-    SET_ACTIVE_GROUP: 'SNAPSHELF_SET_ACTIVE_GROUP',
-    END_SAVE_MODE: 'SNAPSHELF_END_SAVE_MODE',
-    DELETE_SCREENSHOT: 'SNAPSHELF_DELETE_SCREENSHOT',
+    CAPTURE_SELECTION: 'CLIPSHELF_CAPTURE_SELECTION',
+    GET_UI_MODEL: 'CLIPSHELF_GET_UI_MODEL',
+    CREATE_GROUP: 'CLIPSHELF_CREATE_GROUP',
+    RENAME_GROUP: 'CLIPSHELF_RENAME_GROUP',
+    DELETE_GROUP: 'CLIPSHELF_DELETE_GROUP',
+    SET_ACTIVE_GROUP: 'CLIPSHELF_SET_ACTIVE_GROUP',
+    END_SAVE_MODE: 'CLIPSHELF_END_SAVE_MODE',
+    DELETE_SCREENSHOT: 'CLIPSHELF_DELETE_SCREENSHOT',
 };
 
 const EVENT_TYPES = {
-    SCREENSHOT_SAVED: 'SNAPSHELF_SCREENSHOT_SAVED',
+    SCREENSHOT_SAVED: 'CLIPSHELF_SCREENSHOT_SAVED',
 };
 
 const STORAGE_KEYS = {
@@ -23,7 +23,7 @@ const STORAGE_KEYS = {
 const MIN_SELECTION_SIZE = 1;
 const OVERLAY_Z_INDEX = 2147483646;
 const UI_Z_INDEX = 2147483647;
-const UI_HOST_ID = 'snapshelf-ui-host';
+const UI_HOST_ID = 'clipshelf-ui-host';
 
 const selectionState = {
     isSelecting: false,
@@ -566,7 +566,7 @@ function renderNoActiveGroupState(panelBody, model) {
 
     const createTitle = document.createElement('h3');
     createTitle.className = 'section-title';
-    createTitle.textContent = '新規グループを作成';
+    createTitle.textContent = 'Create a new shelf';
     createSection.appendChild(createTitle);
 
     const createRow = document.createElement('div');
@@ -574,10 +574,10 @@ function renderNoActiveGroupState(panelBody, model) {
 
     const groupNameInput = document.createElement('input');
     groupNameInput.className = 'input';
-    groupNameInput.placeholder = 'グループ名を入力';
+    groupNameInput.placeholder = 'Enter shelf name';
     groupNameInput.maxLength = 80;
 
-    const createButtonElement = createButton('新規作成', 'btn', () => {
+    const createButtonElement = createButton('Create', 'btn', () => {
         void withUiMutation(async () => {
             await sendRuntimeMessage(MESSAGE_TYPES.CREATE_GROUP, { name: groupNameInput.value });
         });
@@ -599,14 +599,14 @@ function renderNoActiveGroupState(panelBody, model) {
 
     const listTitle = document.createElement('h3');
     listTitle.className = 'section-title';
-    listTitle.textContent = 'グループ一覧';
+    listTitle.textContent = 'Shelves';
     listSection.appendChild(listTitle);
 
     const groups = Array.isArray(model.groups) ? model.groups : [];
     if (groups.length === 0) {
         const emptyText = document.createElement('p');
         emptyText.className = 'empty';
-        emptyText.textContent = 'まだグループがありません。上のフォームから作成してください。';
+        emptyText.textContent = 'No shelves yet. Please create one from the form above.';
         listSection.appendChild(emptyText);
         panelBody.appendChild(listSection);
         return;
@@ -628,7 +628,7 @@ function renderNoActiveGroupState(panelBody, model) {
             renameInput.value = group.name;
             renameInput.maxLength = 80;
 
-            const saveRename = createButton('保存', 'btn', () => {
+            const saveRename = createButton('Save', 'btn', () => {
                 void withUiMutation(async () => {
                     await sendRuntimeMessage(MESSAGE_TYPES.RENAME_GROUP, {
                         groupId: group.id,
@@ -657,7 +657,7 @@ function renderNoActiveGroupState(panelBody, model) {
 
             const count = document.createElement('span');
             count.className = 'count-pill';
-            count.textContent = `${group.count} 枚`;
+            count.textContent = `${group.count} images`;
 
             head.append(name, count);
         }
@@ -666,19 +666,19 @@ function renderNoActiveGroupState(panelBody, model) {
         controls.className = 'group-controls';
 
         if (uiState.editingGroupId === group.id) {
-            const cancelRename = createButton('キャンセル', 'btn secondary', () => {
+            const cancelRename = createButton('Cancel', 'btn secondary', () => {
                 uiState.editingGroupId = null;
                 renderUiPanel();
             });
             controls.appendChild(cancelRename);
         } else {
-            const renameButton = createButton('名前変更', 'btn secondary', () => {
+            const renameButton = createButton('Rename', 'btn secondary', () => {
                 uiState.editingGroupId = group.id;
                 renderUiPanel();
             });
 
-            const deleteButton = createButton('このグループを削除', 'btn danger', () => {
-                const confirmed = window.confirm('このグループを削除します。保存済みの画像も削除されます。');
+            const deleteButton = createButton('Delete this shelf', 'btn danger', () => {
+                const confirmed = window.confirm('Delete this shelf. Saved images will also be deleted.');
                 if (!confirmed) {
                     return;
                 }
@@ -731,7 +731,7 @@ function openLightbox(screenshot) {
 
     const image = document.createElement('img');
     image.className = 'lightbox-image';
-    image.alt = 'SnapShelf saved image';
+    image.alt = 'ClipShelf saved image';
 
     image.src = imageSource;
     uiState.lightboxUrl = imageSource.startsWith('blob:') ? imageSource : null;
@@ -739,7 +739,7 @@ function openLightbox(screenshot) {
     const actions = document.createElement('div');
     actions.className = 'lightbox-actions';
 
-    const openLinkButton = createButton('リンクを開く', 'btn', () => {
+    const openLinkButton = createButton('Open link', 'btn', () => {
         if (typeof screenshot.pageUrl === 'string' && screenshot.pageUrl.length > 0) {
             window.open(screenshot.pageUrl, '_blank', 'noopener,noreferrer');
         }
@@ -750,7 +750,7 @@ function openLightbox(screenshot) {
         openLinkButton.classList.add('secondary');
     }
 
-    const closeButton = createButton('閉じる', 'btn secondary', () => {
+    const closeButton = createButton('Close', 'btn secondary', () => {
         closeLightbox();
     });
 
@@ -773,7 +773,7 @@ function renderActiveGroupState(panelBody, model) {
     if (!activeGroup) {
         const fallback = document.createElement('p');
         fallback.className = 'empty';
-        fallback.textContent = 'アクティブグループ情報の取得に失敗しました。';
+        fallback.textContent = 'Failed to load active shelf information.';
         panelBody.appendChild(fallback);
         return;
     }
@@ -790,7 +790,7 @@ function renderActiveGroupState(panelBody, model) {
         renameInput.value = activeGroup.name;
         renameInput.maxLength = 80;
 
-        const saveRename = createButton('保存', 'btn', () => {
+        const saveRename = createButton('Save', 'btn', () => {
             void withUiMutation(async () => {
                 await sendRuntimeMessage(MESSAGE_TYPES.RENAME_GROUP, {
                     groupId: activeGroup.id,
@@ -799,7 +799,7 @@ function renderActiveGroupState(panelBody, model) {
             });
         });
 
-        const cancelRename = createButton('キャンセル', 'btn secondary', () => {
+        const cancelRename = createButton('Cancel', 'btn secondary', () => {
             uiState.editingGroupId = null;
             renderUiPanel();
         });
@@ -823,9 +823,9 @@ function renderActiveGroupState(panelBody, model) {
 
         const count = document.createElement('span');
         count.className = 'count-pill';
-        count.textContent = `${activeGroup.count || 0} 枚`;
+        count.textContent = `${activeGroup.count || 0} images`;
 
-        const renameButton = createButton('名前変更', 'btn secondary', () => {
+        const renameButton = createButton('Rename', 'btn secondary', () => {
             uiState.editingGroupId = activeGroup.id;
             renderUiPanel();
         });
@@ -841,14 +841,14 @@ function renderActiveGroupState(panelBody, model) {
 
     const screenshotsTitle = document.createElement('h3');
     screenshotsTitle.className = 'section-title';
-    screenshotsTitle.textContent = '保存済みスクリーンショット';
+    screenshotsTitle.textContent = 'Saved screenshots';
     screenshotsSection.appendChild(screenshotsTitle);
 
     const screenshots = Array.isArray(model.screenshots) ? model.screenshots : [];
     if (screenshots.length === 0) {
         const emptyText = document.createElement('p');
         emptyText.className = 'empty';
-        emptyText.textContent = 'このグループにはまだ画像がありません。Sキーを押しながら左ドラッグで保存できます。';
+        emptyText.textContent = 'No images in this shelf yet. Hold the S key and left-drag to save.';
         screenshotsSection.appendChild(emptyText);
     } else {
         const grid = document.createElement('div');
@@ -867,14 +867,14 @@ function renderActiveGroupState(panelBody, model) {
             if (imageSource) {
                 image.src = imageSource;
             } else {
-                image.alt = '画像データを読み込めません';
+                image.alt = 'Failed to load image data.';
             }
 
             const deleteButton = document.createElement('button');
             deleteButton.type = 'button';
             deleteButton.className = 'thumb-delete';
             deleteButton.textContent = '×';
-            deleteButton.title = '画像を削除';
+            deleteButton.title = 'Delete this image';
 
             deleteButton.addEventListener('click', (event) => {
                 event.stopPropagation();
@@ -885,7 +885,7 @@ function renderActiveGroupState(panelBody, model) {
 
             const meta = document.createElement('span');
             meta.className = 'thumb-meta';
-            meta.textContent = new Date(screenshot.timestamp).toLocaleString('ja-JP');
+            meta.textContent = new Date(screenshot.timestamp).toLocaleString('en-US');
 
             item.append(image, deleteButton, meta);
 
@@ -907,14 +907,14 @@ function renderActiveGroupState(panelBody, model) {
     const actions = document.createElement('div');
     actions.className = 'footer-actions';
 
-    const endSaveButton = createButton('保存を終了', 'btn secondary', () => {
+    const endSaveButton = createButton('Stop saving', 'btn secondary', () => {
         void withUiMutation(async () => {
             await sendRuntimeMessage(MESSAGE_TYPES.END_SAVE_MODE);
         });
     });
 
-    const deleteGroupButton = createButton('このグループを削除', 'btn danger', () => {
-        const confirmed = window.confirm('このグループを削除します。保存済みの画像も削除されます。');
+    const deleteGroupButton = createButton('Delete this shelf', 'btn danger', () => {
+        const confirmed = window.confirm('Delete this shelf. Saved images will also be deleted.');
         if (!confirmed) {
             return;
         }
@@ -944,11 +944,11 @@ function renderUiPanel() {
     header.className = 'panel-header';
 
     const title = document.createElement('span');
-    title.textContent = 'SnapShelf';
+    title.textContent = 'ClipShelf';
 
     const positionLabel = document.createElement('span');
     positionLabel.className = 'panel-pos';
-    positionLabel.textContent = uiState.uiPosition === 'top' ? '上部固定' : '下部固定';
+    positionLabel.textContent = uiState.uiPosition === 'top' ? 'Docked Top' : 'Docked Bottom';
 
     header.append(title, positionLabel);
     panel.appendChild(header);
@@ -962,7 +962,7 @@ function renderUiPanel() {
     if (!uiState.model) {
         const loadingText = document.createElement('p');
         loadingText.className = 'empty';
-        loadingText.textContent = 'データを読み込み中です...';
+        loadingText.textContent = 'Loading data...';
         body.appendChild(loadingText);
         return;
     }
@@ -989,7 +989,7 @@ async function refreshAndRenderUi() {
         renderUiPanel();
     } catch (error) {
         uiState.model = null;
-        uiState.lastError = error?.message || 'UIデータの取得に失敗しました。';
+        uiState.lastError = error?.message || 'Failed to load UI data.';
         renderUiPanel();
     }
 }
@@ -1001,7 +1001,7 @@ async function withUiMutation(action) {
         uiState.editingGroupId = null;
         await refreshAndRenderUi();
     } catch (error) {
-        uiState.lastError = error?.message || '処理に失敗しました。';
+        uiState.lastError = error?.message || 'Operation failed.';
         renderUiPanel();
     }
 }
@@ -1091,13 +1091,13 @@ async function initializeUiState() {
             await openUiPanel();
         }
     } catch (error) {
-        console.error('SnapShelf UI initialization failed:', error);
+        console.error('ClipShelf UI initialization failed:', error);
     }
 }
 
 function createSelectionOverlay() {
     const overlay = document.createElement('div');
-    overlay.id = 'snapshelf-selection-overlay';
+    overlay.id = 'clipshelf-selection-overlay';
     overlay.style.position = 'fixed';
     overlay.style.left = '0px';
     overlay.style.top = '0px';
@@ -1210,7 +1210,7 @@ function sendSelectionToBackground(rect) {
         },
         () => {
             if (chrome.runtime.lastError) {
-                console.warn('SnapShelf: failed to send selection message:', chrome.runtime.lastError.message);
+                console.warn('ClipShelf: failed to send selection message:', chrome.runtime.lastError.message);
             }
         },
     );
