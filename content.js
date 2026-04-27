@@ -31,6 +31,7 @@ const ACTION_TYPES = {
 const STORAGE_KEYS = {
     IS_UI_OPEN: 'isUiOpen',
     UI_POSITION: 'uiPosition',
+    UI_PANEL_HEIGHT: 'uiPanelHeight',
     ACTIVE_GROUP_ID: 'activeGroupId',
     ACTIVE_SHELF_ID: 'activeShelfId',
     GROUPS_METADATA: 'groupsMetadata',
@@ -67,6 +68,7 @@ let isActiveShelfStateInitialized = false;
 
 const uiState = {
     hostElement: null,
+    uiPanelHeight: null,
     shadowRoot: null,
     panelElement: null,
     isUiOpen: false,
@@ -78,6 +80,12 @@ const uiState = {
     lightboxUrl: null,
     lastError: '',
     dismissedStorageWarningLevel: null,
+};
+
+const resizeState = {
+    isResizing: false,
+    startY: 0,
+    startHeight: 0,
 };
 
 function getLocalStorage(keys) {
@@ -295,6 +303,61 @@ function applyUiHostPosition() {
         uiState.hostElement.style.top = '';
         uiState.hostElement.style.bottom = '8px';
     }
+
+    if (uiState.panelElement) {
+        if (uiState.uiPanelHeight) {
+            uiState.panelElement.style.height = `${uiState.uiPanelHeight}px`;
+        } else {
+            uiState.panelElement.style.height = ''; 
+        }
+    }
+}
+
+function handlePanelResizeStart(event) {
+    if (event.button !== 0 || event.target.closest('button, input')) {
+        return;
+    }
+    
+    resizeState.isResizing = true;
+    resizeState.startY = event.clientY;
+    resizeState.startHeight = uiState.panelElement.offsetHeight;
+
+    document.body.style.userSelect = 'none';
+
+    window.addEventListener('mousemove', handlePanelResizeMove);
+    window.addEventListener('mouseup', handlePanelResizeEnd);
+}
+
+function handlePanelResizeMove(event) {
+    if (!resizeState.isResizing || !uiState.panelElement) return;
+
+    event.preventDefault();
+    const deltaY = event.clientY - resizeState.startY;
+    let newHeight;
+
+    if (uiState.uiPosition === 'bottom') {
+        newHeight = resizeState.startHeight - deltaY;
+    } else {
+        newHeight = resizeState.startHeight + deltaY;
+    }
+
+    uiState.panelElement.style.height = `${Math.max(180, newHeight)}px`;
+}
+
+async function handlePanelResizeEnd(event) {
+    if (!resizeState.isResizing) return;
+
+    resizeState.isResizing = false;
+    document.body.style.userSelect = ''; 
+
+    window.removeEventListener('mousemove', handlePanelResizeMove);
+    window.removeEventListener('mouseup', handlePanelResizeEnd);
+
+    if (uiState.panelElement) {
+        const finalHeight = uiState.panelElement.offsetHeight;
+        uiState.uiPanelHeight = finalHeight;
+        await setLocalStorage({ [STORAGE_KEYS.UI_PANEL_HEIGHT]: finalHeight });
+    }
 }
 
 function ensureUiHost() {
@@ -349,7 +412,8 @@ function ensureUiHost() {
 			backdrop-filter: blur(4px);
 			display: flex;
 			flex-direction: column;
-            max-height: min(30vh, 250px);
+            min-height: 200px;
+            max-height: 80vh;
 			overflow: hidden;
 		}
 
@@ -357,6 +421,8 @@ function ensureUiHost() {
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
+            cursor: ns-resize;
+            user-select: none;
             padding: 3px 8px;
 			border-bottom: 1px solid var(--line);
 			background: linear-gradient(90deg, rgba(255, 255, 255, 0.55) 0%, rgba(239, 246, 255, 0.72) 100%);
@@ -364,6 +430,16 @@ function ensureUiHost() {
 			font-weight: 700;
 			letter-spacing: 0.02em;
 		}
+
+        .panel-body {
+            padding: 3px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            flex: 1;          /* 伸び縮み可能にする */
+            min-height: 0;    /* 内部スクロールを有効 */
+        }
 
         .panel-title {
             font-size: 12px;
@@ -477,17 +553,28 @@ function ensureUiHost() {
 
 		.panel-body {
             padding: 3px;
-			overflow: auto;
-			display: grid;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
             gap: 3px;
-		}
+            flex: 1;          /* 伸び縮み可能にする */
+            min-height: 0;    /* 内部スクロールを有効 */
+        }
 
 		.section {
 			border: 1px solid var(--line);
             border-radius: 10px;
             padding: 3px;
 			background: var(--card);
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
 		}
+
+        .section.scrollable {
+            flex: 1 1 0;
+            min-height: 0;
+        }
 
 		.section-title {
             margin: 0 0 2px;
@@ -495,6 +582,7 @@ function ensureUiHost() {
 			color: var(--muted);
 			font-weight: 700;
 			letter-spacing: 0.01em;
+            flex-shrink: 0;
 		}
 
 		.inline-row {
@@ -587,6 +675,10 @@ function ensureUiHost() {
 		.group-list {
 			display: grid;
             gap: 3px;
+            overflow-y: auto;
+            flex: 1;
+            min-height: 0;
+            align-content: start;
 		}
 
 		.group-item {
@@ -644,9 +736,10 @@ function ensureUiHost() {
         }
 
         .thumb-scroll {
-            max-height: 110px;
-            overflow-y: auto;
+            overflow-y: visible;
             padding-right: 2px;
+            flex: 1;
+            min-height: 0;
 		}
 
 		.thumb-item {
@@ -970,7 +1063,7 @@ function renderNoActiveGroupState(panelBody, model) {
     panelBody.appendChild(createSection);
 
     const listSection = document.createElement('section');
-    listSection.className = 'section';
+    listSection.className = 'section scrollable';
 
     const listTitle = document.createElement('h3');
     listTitle.className = 'section-title';
@@ -1243,7 +1336,7 @@ function renderActiveGroupState(panelBody, model) {
     panelBody.appendChild(titleSection);
 
     const screenshotsSection = document.createElement('section');
-    screenshotsSection.className = 'section';
+    screenshotsSection.className = 'section scrollable';
 
     const screenshotsTitle = document.createElement('h3');
     screenshotsTitle.className = 'section-title';
@@ -1324,6 +1417,8 @@ function renderUiPanel() {
 
     const header = document.createElement('header');
     header.className = 'panel-header';
+
+    header.addEventListener('mousedown', handlePanelResizeStart);
 
     const title = document.createElement('span');
     title.className = 'panel-title';
@@ -1490,6 +1585,11 @@ function handleStorageChanged(changes, areaName) {
         applyUiHostPosition();
     }
 
+    if (Object.prototype.hasOwnProperty.call(changes, STORAGE_KEYS.UI_PANEL_HEIGHT)) {
+        uiState.uiPanelHeight = changes[STORAGE_KEYS.UI_PANEL_HEIGHT].newValue;
+        applyUiHostPosition();
+    }
+
     if (!uiState.isUiOpen) {
         return;
     }
@@ -1553,9 +1653,10 @@ function handleRuntimeMessage(message, _sender, sendResponse) {
 
 async function initializeUiState() {
     try {
-        const values = await getLocalStorage([STORAGE_KEYS.IS_UI_OPEN, STORAGE_KEYS.UI_POSITION]);
+        const values = await getLocalStorage([STORAGE_KEYS.IS_UI_OPEN, STORAGE_KEYS.UI_POSITION, STORAGE_KEYS.UI_PANEL_HEIGHT]);
         uiState.uiPosition = normalizeUiPosition(values[STORAGE_KEYS.UI_POSITION]);
-
+        uiState.uiPanelHeight = values[STORAGE_KEYS.UI_PANEL_HEIGHT] || null;
+        
         if (values[STORAGE_KEYS.IS_UI_OPEN]) {
             await openUiPanel();
         }
