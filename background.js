@@ -22,6 +22,10 @@ const EVENT_TYPES = {
     SCREENSHOT_SAVED: 'CLIPSHELF_SCREENSHOT_SAVED',
 };
 
+const ACTION_TYPES = {
+    OPEN_OR_SWITCH_TAB: 'openOrSwitchTab',
+};
+
 const HANDLED_MESSAGE_TYPES = new Set(Object.values(MESSAGE_TYPES));
 
 const FALLBACK_GROUP_NAME = 'Untitled Group';
@@ -62,6 +66,58 @@ function sendMessageToTab(tabId, message) {
         chrome.tabs.sendMessage(tabId, message, () => {
             // Ignore cases where the tab has no active content script listener.
             resolve();
+        });
+    });
+}
+
+function queryTabs(queryInfo) {
+    return new Promise((resolve, reject) => {
+        chrome.tabs.query(queryInfo, (tabs) => {
+            if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+                return;
+            }
+
+            resolve(Array.isArray(tabs) ? tabs : []);
+        });
+    });
+}
+
+function updateTab(tabId, updateProperties) {
+    return new Promise((resolve, reject) => {
+        chrome.tabs.update(tabId, updateProperties, (tab) => {
+            if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+                return;
+            }
+
+            resolve(tab);
+        });
+    });
+}
+
+function focusWindow(windowId) {
+    return new Promise((resolve, reject) => {
+        chrome.windows.update(windowId, { focused: true }, (window) => {
+            if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+                return;
+            }
+
+            resolve(window);
+        });
+    });
+}
+
+function createTab(createProperties) {
+    return new Promise((resolve, reject) => {
+        chrome.tabs.create(createProperties, (tab) => {
+            if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+                return;
+            }
+
+            resolve(tab);
         });
     });
 }
@@ -459,6 +515,25 @@ async function toggleUiOpenState() {
     return { isUiOpen: nextIsUiOpen };
 }
 
+async function openOrSwitchTab(payload) {
+    const targetUrl = typeof payload?.url === 'string' ? payload.url.trim() : '';
+    if (!targetUrl) {
+        throw new Error('A valid URL is required.');
+    }
+
+    const existingTabs = await queryTabs({ url: targetUrl });
+    const targetTab = existingTabs.find((tab) => Number.isInteger(tab?.id));
+
+    if (targetTab && Number.isInteger(targetTab.windowId)) {
+        await focusWindow(targetTab.windowId);
+        await updateTab(targetTab.id, { active: true });
+        return { reused: true, tabId: targetTab.id };
+    }
+
+    const createdTab = await createTab({ url: targetUrl });
+    return { reused: false, tabId: createdTab?.id || null };
+}
+
 async function routeRuntimeMessage(message, sender) {
     switch (message.type) {
         case MESSAGE_TYPES.CAPTURE_SELECTION:
@@ -524,6 +599,22 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.action === ACTION_TYPES.OPEN_OR_SWITCH_TAB) {
+        void openOrSwitchTab(message)
+            .then((data) => {
+                sendResponse({ ok: true, data });
+            })
+            .catch((error) => {
+                console.error('ClipShelf openOrSwitchTab failed:', error);
+                sendResponse({
+                    ok: false,
+                    error: error?.message || 'Failed to process tab request.',
+                });
+            });
+
+        return true;
+    }
+
     if (!message || !HANDLED_MESSAGE_TYPES.has(message.type)) {
         return undefined;
     }

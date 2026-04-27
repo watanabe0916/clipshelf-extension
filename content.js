@@ -107,6 +107,30 @@ function sendRuntimeMessage(type, payload = {}) {
     });
 }
 
+function sendRuntimeActionMessage(action, payload = {}) {
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+            {
+                action,
+                ...payload,
+            },
+            (response) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+
+                if (!response || response.ok !== true) {
+                    reject(new Error(response?.error || i18nMessage('uiErrorBackgroundRequestFailed')));
+                    return;
+                }
+
+                resolve(response.data);
+            },
+        );
+    });
+}
+
 function normalizeUiPosition(value) {
     return value === 'top' ? 'top' : 'bottom';
 }
@@ -1022,7 +1046,9 @@ function openLightbox(screenshot) {
 
     const openLinkButton = createButton(i18nMessage('uiButtonOpenLink'), 'btn lightbox-open-link', () => {
         if (typeof screenshot.pageUrl === 'string' && screenshot.pageUrl.length > 0) {
-            window.open(screenshot.pageUrl, '_blank', 'noopener,noreferrer');
+            void sendRuntimeActionMessage('openOrSwitchTab', { url: screenshot.pageUrl }).catch((error) => {
+                console.warn('ClipShelf: failed to open or switch tab:', error);
+            });
         }
     });
 
