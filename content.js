@@ -21,14 +21,17 @@ const STORAGE_KEYS = {
 };
 
 const MIN_SELECTION_SIZE = 1;
+const CAPTURE_DELAY_MS = 120;
 const OVERLAY_Z_INDEX = 2147483646;
 const UI_Z_INDEX = 2147483647;
 const UI_HOST_ID = 'clipshelf-ui-host';
 
 const selectionState = {
-    isSelecting: false,
+    isDragging: false,
     startX: 0,
     startY: 0,
+    lastX: 0,
+    lastY: 0,
     overlayElement: null,
 };
 
@@ -1300,9 +1303,19 @@ function handleKeyDown(event) {
 }
 
 function handleKeyUp(event) {
-    if (isSelectionShortcutKey(event)) {
-        keyboardState.isSelectionKeyPressed = false;
+    if (!isSelectionShortcutKey(event)) {
+        return;
     }
+
+    keyboardState.isSelectionKeyPressed = false;
+
+    if (!selectionState.isDragging) {
+        return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    finalizeSelection();
 }
 
 function resetSelectionShortcutState() {
@@ -1321,6 +1334,9 @@ function updateOverlayRect(currentX, currentY) {
     if (!selectionState.overlayElement) {
         return;
     }
+
+    selectionState.lastX = currentX;
+    selectionState.lastY = currentY;
 
     const rect = getRectFromPoints(
         selectionState.startX,
@@ -1345,9 +1361,11 @@ function removeOverlay() {
 }
 
 function beginSelection(event) {
-    selectionState.isSelecting = true;
+    selectionState.isDragging = true;
     selectionState.startX = event.clientX;
     selectionState.startY = event.clientY;
+    selectionState.lastX = event.clientX;
+    selectionState.lastY = event.clientY;
 
     const overlay = createSelectionOverlay();
     selectionState.overlayElement = overlay;
@@ -1356,8 +1374,41 @@ function beginSelection(event) {
 }
 
 function endSelection() {
-    selectionState.isSelecting = false;
+    selectionState.isDragging = false;
     removeOverlay();
+}
+
+function scheduleSelectionCapture(rect) {
+    window.setTimeout(() => {
+        sendSelectionToBackground(rect);
+    }, CAPTURE_DELAY_MS);
+}
+
+function finalizeSelection(eventX, eventY) {
+    if (!selectionState.isDragging) {
+        return;
+    }
+
+    // Prevent duplicate capture when mouseup and keyup happen back-to-back.
+    selectionState.isDragging = false;
+
+    const finalX = Number.isFinite(eventX) ? eventX : selectionState.lastX;
+    const finalY = Number.isFinite(eventY) ? eventY : selectionState.lastY;
+
+    removeOverlay();
+
+    const rect = getRectFromPoints(
+        selectionState.startX,
+        selectionState.startY,
+        finalX,
+        finalY,
+    );
+
+    if (rect.width < MIN_SELECTION_SIZE || rect.height < MIN_SELECTION_SIZE) {
+        return;
+    }
+
+    scheduleSelectionCapture(rect);
 }
 
 function sendSelectionToBackground(rect) {
@@ -1383,7 +1434,7 @@ function sendSelectionToBackground(rect) {
 }
 
 function handleMouseDown(event) {
-    if (event.button !== 0 || !keyboardState.isSelectionKeyPressed || selectionState.isSelecting) {
+    if (event.button !== 0 || !keyboardState.isSelectionKeyPressed || selectionState.isDragging) {
         return;
     }
 
@@ -1393,7 +1444,12 @@ function handleMouseDown(event) {
 }
 
 function handleMouseMove(event) {
-    if (!selectionState.isSelecting) {
+    if (!selectionState.isDragging) {
+        return;
+    }
+
+    if ((event.buttons & 1) === 0) {
+        finalizeSelection();
         return;
     }
 
@@ -1403,31 +1459,17 @@ function handleMouseMove(event) {
 }
 
 function handleMouseUp(event) {
-    if (!selectionState.isSelecting) {
+    if (!selectionState.isDragging) {
         return;
     }
 
     event.preventDefault();
     event.stopPropagation();
-
-    const rect = getRectFromPoints(
-        selectionState.startX,
-        selectionState.startY,
-        event.clientX,
-        event.clientY,
-    );
-
-    endSelection();
-
-    if (rect.width < MIN_SELECTION_SIZE || rect.height < MIN_SELECTION_SIZE) {
-        return;
-    }
-
-    sendSelectionToBackground(rect);
+    finalizeSelection(event.clientX, event.clientY);
 }
 
 function blockNativeSelectionWhileDragging(event) {
-    if (!selectionState.isSelecting) {
+    if (!selectionState.isDragging) {
         return;
     }
 
@@ -1436,7 +1478,7 @@ function blockNativeSelectionWhileDragging(event) {
 }
 
 function handleContextMenu(event) {
-    if (!keyboardState.isSelectionKeyPressed && !selectionState.isSelecting) {
+    if (!keyboardState.isSelectionKeyPressed && !selectionState.isDragging) {
         return;
     }
 
@@ -1447,7 +1489,7 @@ function handleContextMenu(event) {
 function handleWindowBlur() {
     resetSelectionShortcutState();
 
-    if (selectionState.isSelecting) {
+    if (selectionState.isDragging) {
         endSelection();
     }
 }
