@@ -273,6 +273,16 @@ async function persistCapturedSelection(payload, sender) {
         timestamp: Date.now(),
     });
 
+    const state = await getStoredAppState();
+    if (state.groupsMetadata[activeGroupId]) {
+        const groupsMetadata = { ...state.groupsMetadata };
+        groupsMetadata[activeGroupId] = {
+            ...groupsMetadata[activeGroupId],
+            updatedAt: Date.now(),
+        };
+        await setStorage({ groupsMetadata });
+    }
+
     void sendMessageToTab(sender?.tab?.id, {
         type: EVENT_TYPES.SCREENSHOT_SAVED,
         groupId: activeGroupId,
@@ -384,7 +394,17 @@ async function setActiveGroup(payload) {
         throw new Error('Group not found.');
     }
 
-    await setStorage({ activeGroupId: requestedGroupId });
+    const groupsMetadata = { ...state.groupsMetadata };
+    groupsMetadata[requestedGroupId] = {
+        ...groupsMetadata[requestedGroupId],
+        updatedAt: Date.now(),
+    };
+
+    await setStorage({
+        activeGroupId: requestedGroupId,
+        groupsMetadata,
+    });
+
     return { activeGroupId: requestedGroupId };
 }
 
