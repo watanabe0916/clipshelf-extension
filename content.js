@@ -1,3 +1,10 @@
+(() => {
+const CONTENT_SCRIPT_GUARD_KEY = '__CLIPSHELF_CONTENT_SCRIPT_INJECTED__';
+if (globalThis[CONTENT_SCRIPT_GUARD_KEY]) {
+    return;
+}
+globalThis[CONTENT_SCRIPT_GUARD_KEY] = true;
+
 const MESSAGE_TYPES = {
     CAPTURE_SELECTION: 'CLIPSHELF_CAPTURE_SELECTION',
     GET_UI_MODEL: 'CLIPSHELF_GET_UI_MODEL',
@@ -13,10 +20,18 @@ const EVENT_TYPES = {
     SCREENSHOT_SAVED: 'CLIPSHELF_SCREENSHOT_SAVED',
 };
 
+const ACTION_TYPES = {
+    OPEN_OR_SWITCH_TAB: 'openOrSwitchTab',
+    TOGGLE_UI: 'toggleUI',
+    CLOSE_ALL_UIS: 'closeAllUIs',
+    FORCE_CLOSE_UI: 'forceCloseUI',
+};
+
 const STORAGE_KEYS = {
     IS_UI_OPEN: 'isUiOpen',
     UI_POSITION: 'uiPosition',
     ACTIVE_GROUP_ID: 'activeGroupId',
+    ACTIVE_SHELF_ID: 'activeShelfId',
     GROUPS_METADATA: 'groupsMetadata',
 };
 
@@ -28,6 +43,7 @@ const SCREENSHOT_DANGER_THRESHOLD = 10000;
 const OVERLAY_Z_INDEX = 2147483646;
 const UI_Z_INDEX = 2147483647;
 const UI_HOST_ID = 'clipshelf-ui-host';
+const INITIAL_UI_SKIP_FLAG = '__CLIPSHELF_SKIP_INITIAL_UI_STATE';
 
 const selectionState = {
     isDragging: false,
@@ -35,12 +51,17 @@ const selectionState = {
     startY: 0,
     lastX: 0,
     lastY: 0,
+    activeShelfId: null,
     overlayElement: null,
 };
 
 const keyboardState = {
     isSelectionKeyPressed: false,
+    isSelectionKeyDown: false,
 };
+
+let currentActiveShelfId = null;
+let activeShelfLoadPromise = null;
 
 const uiState = {
     hostElement: null,
@@ -131,8 +152,57 @@ function sendRuntimeActionMessage(action, payload = {}) {
     });
 }
 
+async function requestCloseAllUis() {
+    await sendRuntimeActionMessage(ACTION_TYPES.CLOSE_ALL_UIS);
+}
+
 function normalizeUiPosition(value) {
     return value === 'top' ? 'top' : 'bottom';
+}
+
+function normalizeStorageId(value) {
+    if (typeof value !== 'string') {
+        return null;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
+function resolveActiveShelfIdFromStorage(values) {
+    return (
+        normalizeStorageId(values?.[STORAGE_KEYS.ACTIVE_SHELF_ID]) ||
+        normalizeStorageId(values?.[STORAGE_KEYS.ACTIVE_GROUP_ID])
+    );
+}
+
+function hasActiveShelfId() {
+    return Boolean(currentActiveShelfId);
+}
+
+async function syncActiveShelfIdFromStorage() {
+    if (activeShelfLoadPromise) {
+        return activeShelfLoadPromise;
+    }
+
+    activeShelfLoadPromise = getLocalStorage(STORAGE_KEYS.ACTIVE_SHELF_ID)
+        .then((values) => {
+            const activeShelfId = normalizeStorageId(values?.[STORAGE_KEYS.ACTIVE_SHELF_ID]);
+            if (activeShelfId) {
+                currentActiveShelfId = activeShelfId;
+                return currentActiveShelfId;
+            }
+
+            return getLocalStorage(STORAGE_KEYS.ACTIVE_GROUP_ID).then((fallbackValues) => {
+                currentActiveShelfId = normalizeStorageId(fallbackValues?.[STORAGE_KEYS.ACTIVE_GROUP_ID]);
+                return currentActiveShelfId;
+            });
+        })
+        .finally(() => {
+            activeShelfLoadPromise = null;
+        });
+
+    return activeShelfLoadPromise;
 }
 
 function i18nMessage(key, substitutions) {
@@ -1046,7 +1116,7 @@ function openLightbox(screenshot) {
 
     const openLinkButton = createButton(i18nMessage('uiButtonOpenLink'), 'btn lightbox-open-link', () => {
         if (typeof screenshot.pageUrl === 'string' && screenshot.pageUrl.length > 0) {
-            void sendRuntimeActionMessage('openOrSwitchTab', { url: screenshot.pageUrl }).catch((error) => {
+            void sendRuntimeActionMessage(ACTION_TYPES.OPEN_OR_SWITCH_TAB, { url: screenshot.pageUrl }).catch((error) => {
                 console.warn('ClipShelf: failed to open or switch tab:', error);
             });
         }
@@ -1268,7 +1338,9 @@ function renderUiPanel() {
         uiState.uiPosition === 'top' ? i18nMessage('uiDockedTop') : i18nMessage('uiDockedBottom');
 
     const closePanelButton = createButton('×', 'panel-close', () => {
-        void setLocalStorage({ [STORAGE_KEYS.IS_UI_OPEN]: false });
+        void closeUiPanelFromUserAction().catch((error) => {
+            console.warn('ClipShelf: failed to close UI from panel button:', error);
+        });
     });
     closePanelButton.title = i18nMessage('uiButtonClose');
     closePanelButton.setAttribute('aria-label', i18nMessage('uiButtonClose'));
@@ -1350,6 +1422,34 @@ async function openUiPanel() {
     await refreshAndRenderUi();
 }
 
+async function closeUiPanelFromUserAction() {
+    const shouldCloseAllUis = !hasActiveShelfId();
+
+    closeUiPanel();
+    await setLocalStorage({ [STORAGE_KEYS.IS_UI_OPEN]: false });
+
+    if (!shouldCloseAllUis) {
+        return;
+    }
+
+    try {
+        await requestCloseAllUis();
+    } catch (error) {
+        console.warn('ClipShelf: failed to request closeAllUIs:', error);
+    }
+}
+
+async function toggleUiPanelInCurrentTab() {
+    if (uiState.isUiOpen) {
+        await closeUiPanelFromUserAction();
+    } else {
+        await openUiPanel();
+        await setLocalStorage({ [STORAGE_KEYS.IS_UI_OPEN]: true });
+    }
+
+    return { isUiOpen: uiState.isUiOpen };
+}
+
 function closeUiPanel() {
     uiState.isUiOpen = false;
     uiState.model = null;
@@ -1374,19 +1474,28 @@ function handleStorageChanged(changes, areaName) {
         return;
     }
 
+    if (
+        Object.prototype.hasOwnProperty.call(changes, STORAGE_KEYS.ACTIVE_SHELF_ID) ||
+        Object.prototype.hasOwnProperty.call(changes, STORAGE_KEYS.ACTIVE_GROUP_ID)
+    ) {
+        if (Object.prototype.hasOwnProperty.call(changes, STORAGE_KEYS.ACTIVE_SHELF_ID)) {
+            currentActiveShelfId = normalizeStorageId(changes[STORAGE_KEYS.ACTIVE_SHELF_ID].newValue);
+        } else {
+            currentActiveShelfId = normalizeStorageId(changes[STORAGE_KEYS.ACTIVE_GROUP_ID].newValue);
+        }
+
+        if (!hasActiveShelfId()) {
+            keyboardState.isSelectionKeyPressed = false;
+
+            if (selectionState.isDragging) {
+                endSelection();
+            }
+        }
+    }
+
     if (Object.prototype.hasOwnProperty.call(changes, STORAGE_KEYS.UI_POSITION)) {
         uiState.uiPosition = normalizeUiPosition(changes[STORAGE_KEYS.UI_POSITION].newValue);
         applyUiHostPosition();
-    }
-
-    if (Object.prototype.hasOwnProperty.call(changes, STORAGE_KEYS.IS_UI_OPEN)) {
-        const shouldOpen = Boolean(changes[STORAGE_KEYS.IS_UI_OPEN].newValue);
-        if (shouldOpen) {
-            void openUiPanel();
-        } else {
-            closeUiPanel();
-        }
-        return;
     }
 
     if (!uiState.isUiOpen) {
@@ -1401,9 +1510,33 @@ function handleStorageChanged(changes, areaName) {
     }
 }
 
-function handleRuntimeMessage(message) {
+function handleRuntimeMessage(message, _sender, sendResponse) {
+    if (message?.action === ACTION_TYPES.FORCE_CLOSE_UI) {
+        if (uiState.isUiOpen) {
+            closeUiPanel();
+        }
+
+        return undefined;
+    }
+
+    if (message?.action === ACTION_TYPES.TOGGLE_UI) {
+        void toggleUiPanelInCurrentTab()
+            .then((data) => {
+                sendResponse({ ok: true, data });
+            })
+            .catch((error) => {
+                console.error('ClipShelf toggleUI failed:', error);
+                sendResponse({
+                    ok: false,
+                    error: error?.message || 'Failed to toggle UI.',
+                });
+            });
+
+        return true;
+    }
+
     if (!message || message.type !== EVENT_TYPES.SCREENSHOT_SAVED) {
-        return;
+        return undefined;
     }
 
     if (!uiState.isUiOpen) {
@@ -1415,10 +1548,11 @@ function handleRuntimeMessage(message) {
         uiState.model?.activeGroupId &&
         message.groupId !== uiState.model.activeGroupId
     ) {
-        return;
+        return undefined;
     }
 
     void refreshAndRenderUi();
+    return undefined;
 }
 
 async function initializeUiState() {
@@ -1467,9 +1601,30 @@ function handleKeyDown(event) {
         return;
     }
 
-    if (isSelectionShortcutKey(event)) {
-        keyboardState.isSelectionKeyPressed = true;
+    if (!isSelectionShortcutKey(event)) {
+        return;
     }
+
+    keyboardState.isSelectionKeyDown = true;
+    keyboardState.isSelectionKeyPressed = hasActiveShelfId();
+
+    if (keyboardState.isSelectionKeyPressed) {
+        return;
+    }
+
+    void syncActiveShelfIdFromStorage()
+        .then((activeShelfId) => {
+            // Skip stale keydown updates when key was already released.
+            if (!keyboardState.isSelectionKeyDown) {
+                return;
+            }
+
+            keyboardState.isSelectionKeyPressed = Boolean(activeShelfId);
+        })
+        .catch((error) => {
+            console.warn('ClipShelf: failed to read activeShelfId on keydown:', error);
+            keyboardState.isSelectionKeyPressed = false;
+        });
 }
 
 function handleKeyUp(event) {
@@ -1477,6 +1632,7 @@ function handleKeyUp(event) {
         return;
     }
 
+    keyboardState.isSelectionKeyDown = false;
     keyboardState.isSelectionKeyPressed = false;
 
     if (!selectionState.isDragging) {
@@ -1489,6 +1645,7 @@ function handleKeyUp(event) {
 }
 
 function resetSelectionShortcutState() {
+    keyboardState.isSelectionKeyDown = false;
     keyboardState.isSelectionKeyPressed = false;
 }
 
@@ -1530,12 +1687,13 @@ function removeOverlay() {
     selectionState.overlayElement = null;
 }
 
-function beginSelection(event) {
+function beginSelection(event, activeShelfId) {
     selectionState.isDragging = true;
     selectionState.startX = event.clientX;
     selectionState.startY = event.clientY;
     selectionState.lastX = event.clientX;
     selectionState.lastY = event.clientY;
+    selectionState.activeShelfId = activeShelfId;
 
     const overlay = createSelectionOverlay();
     selectionState.overlayElement = overlay;
@@ -1545,12 +1703,13 @@ function beginSelection(event) {
 
 function endSelection() {
     selectionState.isDragging = false;
+    selectionState.activeShelfId = null;
     removeOverlay();
 }
 
-function scheduleSelectionCapture(rect) {
+function scheduleSelectionCapture(rect, activeShelfId) {
     window.setTimeout(() => {
-        sendSelectionToBackground(rect);
+        sendSelectionToBackground(rect, activeShelfId);
     }, CAPTURE_DELAY_MS);
 }
 
@@ -1564,6 +1723,8 @@ function finalizeSelection(eventX, eventY) {
 
     const finalX = Number.isFinite(eventX) ? eventX : selectionState.lastX;
     const finalY = Number.isFinite(eventY) ? eventY : selectionState.lastY;
+    const activeShelfId = normalizeStorageId(selectionState.activeShelfId) || currentActiveShelfId;
+    selectionState.activeShelfId = null;
 
     removeOverlay();
 
@@ -1578,13 +1739,18 @@ function finalizeSelection(eventX, eventY) {
         return;
     }
 
-    scheduleSelectionCapture(rect);
+    if (!activeShelfId) {
+        return;
+    }
+
+    scheduleSelectionCapture(rect, activeShelfId);
 }
 
-function sendSelectionToBackground(rect) {
+function sendSelectionToBackground(rect, activeShelfId) {
     chrome.runtime.sendMessage(
         {
             type: MESSAGE_TYPES.CAPTURE_SELECTION,
+            activeShelfId,
             pageUrl: window.location.href,
             selection: {
                 x: rect.x,
@@ -1595,9 +1761,19 @@ function sendSelectionToBackground(rect) {
                 viewportHeight: window.innerHeight,
             },
         },
-        () => {
+        (response) => {
             if (chrome.runtime.lastError) {
                 console.warn('ClipShelf: failed to send selection message:', chrome.runtime.lastError.message);
+                return;
+            }
+
+            if (!response || response.ok !== true) {
+                console.warn('ClipShelf: capture request failed:', response?.error || 'unknown-error');
+                return;
+            }
+
+            if (response.data?.saved === false) {
+                console.warn('ClipShelf: selection was not saved:', response.data.reason || 'unknown-reason');
             }
         },
     );
@@ -1608,9 +1784,14 @@ function handleMouseDown(event) {
         return;
     }
 
+    if (!hasActiveShelfId()) {
+        keyboardState.isSelectionKeyPressed = false;
+        return;
+    }
+
     event.preventDefault();
     event.stopPropagation();
-    beginSelection(event);
+    beginSelection(event, currentActiveShelfId);
 }
 
 function handleMouseMove(event) {
@@ -1681,4 +1862,14 @@ window.addEventListener('beforeunload', () => {
 
 chrome.storage.onChanged.addListener(handleStorageChanged);
 chrome.runtime.onMessage.addListener(handleRuntimeMessage);
-void initializeUiState();
+void syncActiveShelfIdFromStorage().catch((error) => {
+    console.warn('ClipShelf: failed to initialize activeShelfId state:', error);
+});
+
+if (globalThis[INITIAL_UI_SKIP_FLAG]) {
+    delete globalThis[INITIAL_UI_SKIP_FLAG];
+} else {
+    void initializeUiState();
+}
+
+})();

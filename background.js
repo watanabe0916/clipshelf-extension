@@ -4,6 +4,7 @@ const STORAGE_DEFAULTS = {
     isUiOpen: false,
     uiPosition: 'bottom',
     activeGroupId: null,
+    activeShelfId: null,
     groupsMetadata: {},
 };
 
@@ -24,7 +25,12 @@ const EVENT_TYPES = {
 
 const ACTION_TYPES = {
     OPEN_OR_SWITCH_TAB: 'openOrSwitchTab',
+    TOGGLE_UI: 'toggleUI',
+    CLOSE_ALL_UIS: 'closeAllUIs',
+    FORCE_CLOSE_UI: 'forceCloseUI',
 };
+
+const CONTENT_INITIAL_UI_SKIP_FLAG = '__CLIPSHELF_SKIP_INITIAL_UI_STATE';
 
 const HANDLED_MESSAGE_TYPES = new Set(Object.values(MESSAGE_TYPES));
 
@@ -67,6 +73,48 @@ function sendMessageToTab(tabId, message) {
             // Ignore cases where the tab has no active content script listener.
             resolve();
         });
+    });
+}
+
+function sendMessageToTabWithResponse(tabId, message) {
+    return new Promise((resolve, reject) => {
+        if (!Number.isInteger(tabId)) {
+            reject(new Error('A valid tab id is required.'));
+            return;
+        }
+
+        chrome.tabs.sendMessage(tabId, message, (response) => {
+            if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+                return;
+            }
+
+            resolve(response);
+        });
+    });
+}
+
+function executeScriptOnTab(tabId, injection) {
+    return new Promise((resolve, reject) => {
+        if (!Number.isInteger(tabId)) {
+            reject(new Error('A valid tab id is required.'));
+            return;
+        }
+
+        chrome.scripting.executeScript(
+            {
+                target: { tabId },
+                ...injection,
+            },
+            (results) => {
+                if (chrome.runtime.lastError) {
+                    reject(chrome.runtime.lastError);
+                    return;
+                }
+
+                resolve(results);
+            },
+        );
     });
 }
 
@@ -122,6 +170,60 @@ function createTab(createProperties) {
     });
 }
 
+function isInjectableTabUrl(url) {
+    if (typeof url !== 'string') {
+        return false;
+    }
+
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+        return false;
+    }
+
+    try {
+        const parsedUrl = new URL(trimmedUrl);
+        const host = parsedUrl.hostname.toLowerCase();
+        const path = parsedUrl.pathname.toLowerCase();
+
+        if (host === 'chromewebstore.google.com') {
+            return false;
+        }
+
+        if (host === 'chrome.google.com' && path.startsWith('/webstore')) {
+            return false;
+        }
+
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function injectContentScriptIntoExistingTabs() {
+    const tabs = await queryTabs({});
+
+    for (const tab of tabs) {
+        const tabId = tab?.id;
+        const tabUrl = tab?.url;
+
+        if (!Number.isInteger(tabId) || !isInjectableTabUrl(tabUrl)) {
+            continue;
+        }
+
+        try {
+            await executeScriptOnTab(tabId, {
+                files: ['content.js'],
+            });
+        } catch (error) {
+            console.warn('ClipShelf: failed to inject content script:', {
+                tabId,
+                tabUrl,
+                error: error?.message || String(error),
+            });
+        }
+    }
+}
+
 function cloneDefaultValue(value) {
     if (value === null || typeof value !== 'object') {
         return value;
@@ -171,6 +273,15 @@ function normalizeUiPosition(value) {
     return value === 'top' ? 'top' : 'bottom';
 }
 
+function normalizeStorageId(value) {
+    if (typeof value !== 'string') {
+        return null;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
 function createGroupId() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         return crypto.randomUUID();
@@ -181,11 +292,14 @@ function createGroupId() {
 
 async function getStoredAppState() {
     const state = await getStorage(Object.keys(STORAGE_DEFAULTS));
+    const activeGroupId = normalizeStorageId(state.activeGroupId);
+    const activeShelfId = normalizeStorageId(state.activeShelfId) || activeGroupId;
 
     return {
         isUiOpen: Boolean(state.isUiOpen),
         uiPosition: normalizeUiPosition(state.uiPosition),
-        activeGroupId: typeof state.activeGroupId === 'string' ? state.activeGroupId : null,
+        activeGroupId,
+        activeShelfId,
         groupsMetadata: normalizeGroupsMetadata(state.groupsMetadata),
     };
 }
@@ -309,9 +423,11 @@ async function persistCapturedSelection(payload, sender) {
         return { saved: false, reason: 'invalid-selection' };
     }
 
-    const { activeGroupId } = await getStorage(['activeGroupId']);
-    if (!activeGroupId) {
-        return { saved: false, reason: 'no-active-group' };
+    const state = await getStoredAppState();
+    const requestedShelfId = normalizeStorageId(payload?.activeShelfId);
+    const activeShelfId = requestedShelfId || state.activeShelfId;
+    if (!activeShelfId || !state.groupsMetadata[activeShelfId]) {
+        return { saved: false, reason: 'no-active-shelf' };
     }
 
     const pageUrl =
@@ -323,17 +439,16 @@ async function persistCapturedSelection(payload, sender) {
     const imageBlob = await cropDataUrlToBlob(dataUrl, selection);
 
     await self.ClipShelfDB.addScreenshot({
-        groupId: activeGroupId,
+        groupId: activeShelfId,
         imageBlob,
         pageUrl,
         timestamp: Date.now(),
     });
 
-    const state = await getStoredAppState();
-    if (state.groupsMetadata[activeGroupId]) {
+    if (state.groupsMetadata[activeShelfId]) {
         const groupsMetadata = { ...state.groupsMetadata };
-        groupsMetadata[activeGroupId] = {
-            ...groupsMetadata[activeGroupId],
+        groupsMetadata[activeShelfId] = {
+            ...groupsMetadata[activeShelfId],
             updatedAt: Date.now(),
         };
         await setStorage({ groupsMetadata });
@@ -341,7 +456,7 @@ async function persistCapturedSelection(payload, sender) {
 
     void sendMessageToTab(sender?.tab?.id, {
         type: EVENT_TYPES.SCREENSHOT_SAVED,
-        groupId: activeGroupId,
+        groupId: activeShelfId,
     });
 
     return { saved: true };
@@ -351,10 +466,26 @@ async function buildUiModel() {
     const state = await getStoredAppState();
     const groupsMetadata = state.groupsMetadata;
     let activeGroupId = state.activeGroupId;
+    let activeShelfId = state.activeShelfId;
+    const nextStorage = {};
 
     if (activeGroupId && !groupsMetadata[activeGroupId]) {
         activeGroupId = null;
-        await setStorage({ activeGroupId: null });
+        nextStorage.activeGroupId = null;
+    }
+
+    if (activeShelfId && !groupsMetadata[activeShelfId]) {
+        activeShelfId = null;
+        nextStorage.activeShelfId = null;
+    }
+
+    if (!activeShelfId && activeGroupId) {
+        activeShelfId = activeGroupId;
+        nextStorage.activeShelfId = activeGroupId;
+    }
+
+    if (Object.keys(nextStorage).length > 0) {
+        await setStorage(nextStorage);
     }
 
     const groupIds = Object.keys(groupsMetadata);
@@ -414,6 +545,7 @@ async function createGroup(payload) {
     await setStorage({
         groupsMetadata,
         activeGroupId: groupId,
+        activeShelfId: groupId,
     });
 
     return { groupId };
@@ -460,15 +592,16 @@ async function setActiveGroup(payload) {
 
     await setStorage({
         activeGroupId: requestedGroupId,
+        activeShelfId: requestedGroupId,
         groupsMetadata,
     });
 
-    return { activeGroupId: requestedGroupId };
+    return { activeGroupId: requestedGroupId, activeShelfId: requestedGroupId };
 }
 
 async function endSaveMode() {
-    await setStorage({ activeGroupId: null });
-    return { activeGroupId: null };
+    await setStorage({ activeGroupId: null, activeShelfId: null });
+    return { activeGroupId: null, activeShelfId: null };
 }
 
 async function deleteGroup(payload) {
@@ -490,6 +623,10 @@ async function deleteGroup(payload) {
         nextStorage.activeGroupId = null;
     }
 
+    if (state.activeShelfId === groupId) {
+        nextStorage.activeShelfId = null;
+    }
+
     await Promise.all([
         setStorage(nextStorage),
         self.ClipShelfDB.deleteScreenshotsByGroup(groupId),
@@ -508,11 +645,47 @@ async function deleteScreenshot(payload) {
     return { deleted: true };
 }
 
-async function toggleUiOpenState() {
-    const state = await getStoredAppState();
-    const nextIsUiOpen = !state.isUiOpen;
-    await setStorage({ isUiOpen: nextIsUiOpen });
-    return { isUiOpen: nextIsUiOpen };
+function isNoReceiverError(error) {
+    const message = String(error?.message || '');
+    return (
+        message.includes('Could not establish connection') ||
+        message.includes('Receiving end does not exist')
+    );
+}
+
+async function toggleUiInActiveTab() {
+    const activeTabs = await queryTabs({ active: true, currentWindow: true });
+    const activeTab = activeTabs.find((tab) => Number.isInteger(tab?.id));
+
+    if (!activeTab || !Number.isInteger(activeTab.id)) {
+        return { toggled: false, reason: 'no-active-tab' };
+    }
+
+    try {
+        const response = await sendMessageToTabWithResponse(activeTab.id, {
+            action: ACTION_TYPES.TOGGLE_UI,
+        });
+        return response;
+    } catch (error) {
+        if (!isNoReceiverError(error)) {
+            throw error;
+        }
+
+        await executeScriptOnTab(activeTab.id, {
+            func: (flagName) => {
+                globalThis[flagName] = true;
+            },
+            args: [CONTENT_INITIAL_UI_SKIP_FLAG],
+        });
+
+        await executeScriptOnTab(activeTab.id, {
+            files: ['content.js'],
+        });
+
+        return sendMessageToTabWithResponse(activeTab.id, {
+            action: ACTION_TYPES.TOGGLE_UI,
+        });
+    }
 }
 
 async function openOrSwitchTab(payload) {
@@ -532,6 +705,22 @@ async function openOrSwitchTab(payload) {
 
     const createdTab = await createTab({ url: targetUrl });
     return { reused: false, tabId: createdTab?.id || null };
+}
+
+async function closeAllUisAcrossTabs() {
+    const tabs = await queryTabs({});
+
+    await Promise.all(
+        tabs.map((tab) =>
+            sendMessageToTab(tab?.id, {
+                action: ACTION_TYPES.FORCE_CLOSE_UI,
+            }),
+        ),
+    );
+
+    return {
+        closedTabCount: tabs.filter((tab) => Number.isInteger(tab?.id)).length,
+    };
 }
 
 async function routeRuntimeMessage(message, sender) {
@@ -590,8 +779,16 @@ async function initializeStorageDefaults() {
     }
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
     void initializeStorageDefaults();
+
+    if (details?.reason !== 'install' && details?.reason !== 'update') {
+        return;
+    }
+
+    void injectContentScriptIntoExistingTabs().catch((error) => {
+        console.warn('ClipShelf: failed to inject existing tabs on install/update:', error);
+    });
 });
 
 chrome.runtime.onStartup.addListener(() => {
@@ -609,6 +806,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({
                     ok: false,
                     error: error?.message || 'Failed to process tab request.',
+                });
+            });
+
+        return true;
+    }
+
+    if (message?.action === ACTION_TYPES.CLOSE_ALL_UIS) {
+        void closeAllUisAcrossTabs()
+            .then((data) => {
+                sendResponse({ ok: true, data });
+            })
+            .catch((error) => {
+                console.error('ClipShelf closeAllUIs failed:', error);
+                sendResponse({
+                    ok: false,
+                    error: error?.message || 'Failed to close all UIs.',
                 });
             });
 
@@ -636,7 +849,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 if (chrome.action?.onClicked) {
     chrome.action.onClicked.addListener(() => {
-        void toggleUiOpenState();
+        void toggleUiInActiveTab().catch((error) => {
+            console.error('ClipShelf action toggle failed:', error);
+        });
     });
 }
 
