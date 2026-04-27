@@ -25,6 +25,7 @@ const ACTION_TYPES = {
     TOGGLE_UI: 'toggleUI',
     CLOSE_ALL_UIS: 'closeAllUIs',
     FORCE_CLOSE_UI: 'forceCloseUI',
+    FORCE_DISABLE_SELECTION: 'forceDisableSelection',
 };
 
 const STORAGE_KEYS = {
@@ -62,6 +63,7 @@ const keyboardState = {
 
 let currentActiveShelfId = null;
 let activeShelfLoadPromise = null;
+let isActiveShelfStateInitialized = false;
 
 const uiState = {
     hostElement: null,
@@ -170,14 +172,19 @@ function normalizeStorageId(value) {
 }
 
 function resolveActiveShelfIdFromStorage(values) {
-    return (
-        normalizeStorageId(values?.[STORAGE_KEYS.ACTIVE_SHELF_ID]) ||
-        normalizeStorageId(values?.[STORAGE_KEYS.ACTIVE_GROUP_ID])
-    );
+    return normalizeStorageId(values?.[STORAGE_KEYS.ACTIVE_SHELF_ID]);
 }
 
 function hasActiveShelfId() {
     return Boolean(currentActiveShelfId);
+}
+
+function isSelectionModeReady() {
+    return isActiveShelfStateInitialized;
+}
+
+function canUseSelectionMode() {
+    return isSelectionModeReady() && hasActiveShelfId();
 }
 
 async function syncActiveShelfIdFromStorage() {
@@ -187,19 +194,12 @@ async function syncActiveShelfIdFromStorage() {
 
     activeShelfLoadPromise = getLocalStorage(STORAGE_KEYS.ACTIVE_SHELF_ID)
         .then((values) => {
-            const activeShelfId = normalizeStorageId(values?.[STORAGE_KEYS.ACTIVE_SHELF_ID]);
-            if (activeShelfId) {
-                currentActiveShelfId = activeShelfId;
-                return currentActiveShelfId;
-            }
-
-            return getLocalStorage(STORAGE_KEYS.ACTIVE_GROUP_ID).then((fallbackValues) => {
-                currentActiveShelfId = normalizeStorageId(fallbackValues?.[STORAGE_KEYS.ACTIVE_GROUP_ID]);
-                return currentActiveShelfId;
-            });
+            currentActiveShelfId = resolveActiveShelfIdFromStorage(values);
+            return currentActiveShelfId;
         })
         .finally(() => {
             activeShelfLoadPromise = null;
+            isActiveShelfStateInitialized = true;
         });
 
     return activeShelfLoadPromise;
@@ -1474,22 +1474,14 @@ function handleStorageChanged(changes, areaName) {
         return;
     }
 
-    if (
-        Object.prototype.hasOwnProperty.call(changes, STORAGE_KEYS.ACTIVE_SHELF_ID) ||
-        Object.prototype.hasOwnProperty.call(changes, STORAGE_KEYS.ACTIVE_GROUP_ID)
-    ) {
-        if (Object.prototype.hasOwnProperty.call(changes, STORAGE_KEYS.ACTIVE_SHELF_ID)) {
-            currentActiveShelfId = normalizeStorageId(changes[STORAGE_KEYS.ACTIVE_SHELF_ID].newValue);
-        } else {
-            currentActiveShelfId = normalizeStorageId(changes[STORAGE_KEYS.ACTIVE_GROUP_ID].newValue);
-        }
+    const hasActiveShelfChange = Object.prototype.hasOwnProperty.call(changes, STORAGE_KEYS.ACTIVE_SHELF_ID);
+
+    if (hasActiveShelfChange) {
+        currentActiveShelfId = normalizeStorageId(changes[STORAGE_KEYS.ACTIVE_SHELF_ID].newValue);
+        isActiveShelfStateInitialized = true;
 
         if (!hasActiveShelfId()) {
-            keyboardState.isSelectionKeyPressed = false;
-
-            if (selectionState.isDragging) {
-                endSelection();
-            }
+            resetSelectionInteractionState();
         }
     }
 
@@ -1511,6 +1503,10 @@ function handleStorageChanged(changes, areaName) {
 }
 
 function handleRuntimeMessage(message, _sender, sendResponse) {
+    if (message?.action === ACTION_TYPES.FORCE_DISABLE_SELECTION) {
+        resetSelectionInteractionState();
+        return undefined;
+    }
     if (message?.action === ACTION_TYPES.FORCE_CLOSE_UI) {
         if (uiState.isUiOpen) {
             closeUiPanel();
@@ -1597,6 +1593,10 @@ function isSelectionShortcutKey(event) {
 }
 
 function handleKeyDown(event) {
+    if (!canUseSelectionMode()) {
+        return;
+    }
+
     if (isEditableTarget(event.target)) {
         return;
     }
@@ -1605,26 +1605,11 @@ function handleKeyDown(event) {
         return;
     }
 
+    // Cancel browser default only while selection save mode is active.
+    event.preventDefault();
+    event.stopPropagation();
     keyboardState.isSelectionKeyDown = true;
-    keyboardState.isSelectionKeyPressed = hasActiveShelfId();
-
-    if (keyboardState.isSelectionKeyPressed) {
-        return;
-    }
-
-    void syncActiveShelfIdFromStorage()
-        .then((activeShelfId) => {
-            // Skip stale keydown updates when key was already released.
-            if (!keyboardState.isSelectionKeyDown) {
-                return;
-            }
-
-            keyboardState.isSelectionKeyPressed = Boolean(activeShelfId);
-        })
-        .catch((error) => {
-            console.warn('ClipShelf: failed to read activeShelfId on keydown:', error);
-            keyboardState.isSelectionKeyPressed = false;
-        });
+    keyboardState.isSelectionKeyPressed = true;
 }
 
 function handleKeyUp(event) {
@@ -1679,12 +1664,28 @@ function updateOverlayRect(currentX, currentY) {
 }
 
 function removeOverlay() {
-    if (!selectionState.overlayElement) {
-        return;
+    if (selectionState.overlayElement) {
+        selectionState.overlayElement.remove();
+        selectionState.overlayElement = null;
     }
 
-    selectionState.overlayElement.remove();
-    selectionState.overlayElement = null;
+    // Remove stale overlays that may remain from interrupted interactions.
+    document.querySelectorAll('#clipshelf-selection-overlay').forEach((overlay) => {
+        overlay.remove();
+    });
+}
+
+function resetSelectionInteractionState() {
+    selectionState.isDragging = false;
+    selectionState.startX = 0;
+    selectionState.startY = 0;
+    selectionState.lastX = 0;
+    selectionState.lastY = 0;
+    selectionState.activeShelfId = null;
+    removeOverlay();
+
+    keyboardState.isSelectionKeyDown = false;
+    keyboardState.isSelectionKeyPressed = false;
 }
 
 function beginSelection(event, activeShelfId) {
@@ -1780,12 +1781,11 @@ function sendSelectionToBackground(rect, activeShelfId) {
 }
 
 function handleMouseDown(event) {
-    if (event.button !== 0 || !keyboardState.isSelectionKeyPressed || selectionState.isDragging) {
+    if (!canUseSelectionMode()) {
         return;
     }
 
-    if (!hasActiveShelfId()) {
-        keyboardState.isSelectionKeyPressed = false;
+    if (event.button !== 0 || !keyboardState.isSelectionKeyPressed || selectionState.isDragging) {
         return;
     }
 
@@ -1795,6 +1795,10 @@ function handleMouseDown(event) {
 }
 
 function handleMouseMove(event) {
+    if (!canUseSelectionMode()) {
+        return;
+    }
+
     if (!selectionState.isDragging) {
         return;
     }
@@ -1810,6 +1814,10 @@ function handleMouseMove(event) {
 }
 
 function handleMouseUp(event) {
+    if (!canUseSelectionMode()) {
+        return;
+    }
+
     if (!selectionState.isDragging) {
         return;
     }

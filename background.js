@@ -28,6 +28,7 @@ const ACTION_TYPES = {
     TOGGLE_UI: 'toggleUI',
     CLOSE_ALL_UIS: 'closeAllUIs',
     FORCE_CLOSE_UI: 'forceCloseUI',
+    FORCE_DISABLE_SELECTION: 'forceDisableSelection',
 };
 
 const CONTENT_INITIAL_UI_SKIP_FLAG = '__CLIPSHELF_SKIP_INITIAL_UI_STATE';
@@ -601,6 +602,12 @@ async function setActiveGroup(payload) {
 
 async function endSaveMode() {
     await setStorage({ activeGroupId: null, activeShelfId: null });
+    try {
+        await forceDisableSelectionAcrossTabs();
+    } catch (error) {
+        console.warn('ClipShelf: failed to force-disable selection across tabs:', error);
+    }
+
     return { activeGroupId: null, activeShelfId: null };
 }
 
@@ -631,6 +638,14 @@ async function deleteGroup(payload) {
         setStorage(nextStorage),
         self.ClipShelfDB.deleteScreenshotsByGroup(groupId),
     ]);
+
+    if (state.activeShelfId === groupId) {
+        try {
+            await forceDisableSelectionAcrossTabs();
+        } catch (error) {
+            console.warn('ClipShelf: failed to force-disable selection after group delete:', error);
+        }
+    }
 
     return { deleted: true };
 }
@@ -720,6 +735,22 @@ async function closeAllUisAcrossTabs() {
 
     return {
         closedTabCount: tabs.filter((tab) => Number.isInteger(tab?.id)).length,
+    };
+}
+
+async function forceDisableSelectionAcrossTabs() {
+    const tabs = await queryTabs({});
+
+    await Promise.all(
+        tabs.map((tab) =>
+            sendMessageToTab(tab?.id, {
+                action: ACTION_TYPES.FORCE_DISABLE_SELECTION,
+            }),
+        ),
+    );
+
+    return {
+        signalledTabCount: tabs.filter((tab) => Number.isInteger(tab?.id)).length,
     };
 }
 
