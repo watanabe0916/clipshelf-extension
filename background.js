@@ -303,6 +303,7 @@ async function buildUiModel() {
 
     const groupIds = Object.keys(groupsMetadata);
     const countsByGroupId = await self.ClipShelfDB.getScreenshotCountsByGroupIds(groupIds);
+    const totalScreenshotCount = await self.ClipShelfDB.getTotalScreenshotCount();
 
     const groups = groupIds
         .map((groupId) => ({
@@ -329,6 +330,7 @@ async function buildUiModel() {
         isUiOpen: state.isUiOpen,
         uiPosition: state.uiPosition,
         activeGroupId,
+        totalScreenshotCount,
         groups,
         activeGroup: activeGroupId
             ? {

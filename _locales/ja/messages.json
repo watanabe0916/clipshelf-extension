@@ -90,5 +90,27 @@
     },
     "uiErrorOperationFailed": {
         "message": "操作に失敗しました。"
+    },
+    "uiStorageWarningCount": {
+        "message": "注意: 画像が $COUNT$ 枚保存されています（しきい値: $THRESHOLD$ 枚）。古い画像の削除を検討してください。",
+        "placeholders": {
+            "count": {
+                "content": "$1"
+            },
+            "threshold": {
+                "content": "$2"
+            }
+        }
+    },
+    "uiStorageDangerCount": {
+        "message": "警告: 画像が $COUNT$ 枚保存されています（しきい値: $THRESHOLD$ 枚）。不要な画像を削除して容量とパフォーマンスへの影響を抑えてください。",
+        "placeholders": {
+            "count": {
+                "content": "$1"
+            },
+            "threshold": {
+                "content": "$2"
+            }
+        }
     }
 }

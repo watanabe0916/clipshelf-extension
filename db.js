@@ -38,6 +38,10 @@ async function getScreenshotCountsByGroupIds(groupIds) {
     return counts;
 }
 
+async function getTotalScreenshotCount() {
+    return clipShelfDB.table('screenshots').count();
+}
+
 self.ClipShelfDB = {
     db: clipShelfDB,
     addScreenshot,
@@ -45,4 +49,5 @@ self.ClipShelfDB = {
     deleteScreenshotById,
     deleteScreenshotsByGroup,
     getScreenshotCountsByGroupIds,
+    getTotalScreenshotCount,
 };

@@ -90,5 +90,27 @@
     },
     "uiErrorOperationFailed": {
         "message": "Operation failed."
+    },
+    "uiStorageWarningCount": {
+        "message": "Warning: $COUNT$ images are saved (threshold: $THRESHOLD$). Consider deleting old images.",
+        "placeholders": {
+            "count": {
+                "content": "$1"
+            },
+            "threshold": {
+                "content": "$2"
+            }
+        }
+    },
+    "uiStorageDangerCount": {
+        "message": "Danger: $COUNT$ images are saved (threshold: $THRESHOLD$). Delete unnecessary images to avoid storage and performance issues.",
+        "placeholders": {
+            "count": {
+                "content": "$1"
+            },
+            "threshold": {
+                "content": "$2"
+            }
+        }
     }
 }

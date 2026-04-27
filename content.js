@@ -22,6 +22,9 @@ const STORAGE_KEYS = {
 
 const MIN_SELECTION_SIZE = 1;
 const CAPTURE_DELAY_MS = 120;
+// Temporary thresholds for verification; switch to 5000/10000 for production.
+const SCREENSHOT_WARNING_THRESHOLD = 5000;
+const SCREENSHOT_DANGER_THRESHOLD = 10000;
 const OVERLAY_Z_INDEX = 2147483646;
 const UI_Z_INDEX = 2147483647;
 const UI_HOST_ID = 'clipshelf-ui-host';
@@ -51,6 +54,7 @@ const uiState = {
     lightboxElement: null,
     lightboxUrl: null,
     lastError: '',
+    dismissedStorageWarningLevel: null,
 };
 
 function getLocalStorage(keys) {
@@ -110,6 +114,36 @@ function normalizeUiPosition(value) {
 function i18nMessage(key, substitutions) {
     const message = chrome.i18n.getMessage(key, substitutions);
     return typeof message === 'string' ? message : '';
+}
+
+function getStorageWarningLevel(totalScreenshotCount) {
+    if (!Number.isFinite(totalScreenshotCount)) {
+        return null;
+    }
+
+    if (totalScreenshotCount >= SCREENSHOT_DANGER_THRESHOLD) {
+        return 'danger';
+    }
+
+    if (totalScreenshotCount >= SCREENSHOT_WARNING_THRESHOLD) {
+        return 'warning';
+    }
+
+    return null;
+}
+
+function getStorageWarningMessage(level, totalScreenshotCount) {
+    if (level === 'danger') {
+        return i18nMessage('uiStorageDangerCount', [
+            String(totalScreenshotCount),
+            String(SCREENSHOT_DANGER_THRESHOLD),
+        ]);
+    }
+
+    return i18nMessage('uiStorageWarningCount', [
+        String(totalScreenshotCount),
+        String(SCREENSHOT_WARNING_THRESHOLD),
+    ]);
 }
 
 function createTrackedObjectUrl(blob) {
@@ -283,6 +317,66 @@ function ensureUiHost() {
         }
 
         .panel-close:focus-visible {
+            outline: 2px solid rgba(15, 118, 110, 0.35);
+            outline-offset: 1px;
+        }
+
+        .storage-alert {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 4px;
+            margin: 3px 3px 0;
+            padding: 3px 6px;
+            border-radius: 8px;
+            border: 1px solid transparent;
+        }
+
+        .storage-alert.warning {
+            background: rgba(254, 243, 199, 0.95);
+            border-color: rgba(217, 119, 6, 0.42);
+            color: #92400e;
+        }
+
+        .storage-alert.danger {
+            background: rgba(254, 226, 226, 0.95);
+            border-color: rgba(220, 38, 38, 0.42);
+            color: #991b1b;
+        }
+
+        .storage-alert-text {
+            margin: 0;
+            font-size: 10px;
+            line-height: 1.3;
+            font-weight: 700;
+            flex: 1;
+        }
+
+        .storage-alert-close {
+            width: 18px;
+            height: 18px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.75);
+            background: rgba(15, 23, 42, 0.76);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            padding: 0;
+            display: grid;
+            place-items: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+        }
+
+        .storage-alert-close:hover {
+            transform: translateY(-1px);
+            background: rgba(194, 65, 12, 0.95);
+            box-shadow: 0 8px 16px rgba(194, 65, 12, 0.22);
+        }
+
+        .storage-alert-close:focus-visible {
             outline: 2px solid rgba(15, 118, 110, 0.35);
             outline-offset: 1px;
         }
@@ -711,6 +805,42 @@ function renderErrorBanner(target) {
     target.appendChild(errorBanner);
 }
 
+function renderStorageWarning(panel, model) {
+    const totalScreenshotCount = Number(model?.totalScreenshotCount);
+    const warningLevel = getStorageWarningLevel(totalScreenshotCount);
+
+    if (!warningLevel) {
+        uiState.dismissedStorageWarningLevel = null;
+        return;
+    }
+
+    if (uiState.dismissedStorageWarningLevel === warningLevel) {
+        return;
+    }
+
+    const warning = document.createElement('div');
+    warning.className = `storage-alert ${warningLevel}`;
+
+    const warningText = document.createElement('p');
+    warningText.className = 'storage-alert-text';
+    warningText.textContent = getStorageWarningMessage(warningLevel, totalScreenshotCount);
+
+    const closeWarningButton = document.createElement('button');
+    closeWarningButton.type = 'button';
+    closeWarningButton.className = 'storage-alert-close';
+    closeWarningButton.textContent = '×';
+    closeWarningButton.title = i18nMessage('uiButtonClose');
+    closeWarningButton.setAttribute('aria-label', i18nMessage('uiButtonClose'));
+    closeWarningButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        uiState.dismissedStorageWarningLevel = warningLevel;
+        renderUiPanel();
+    });
+
+    warning.append(warningText, closeWarningButton);
+    panel.appendChild(warning);
+}
+
 function renderNoActiveGroupState(panelBody, model) {
     const createSection = document.createElement('section');
     createSection.className = 'section';
@@ -1122,6 +1252,10 @@ function renderUiPanel() {
     header.append(title, headerActions);
     panel.appendChild(header);
 
+    if (uiState.model) {
+        renderStorageWarning(panel, uiState.model);
+    }
+
     const body = document.createElement('div');
     body.className = 'panel-body';
     panel.appendChild(body);
@@ -1153,6 +1287,14 @@ async function refreshAndRenderUi() {
         const model = await sendRuntimeMessage(MESSAGE_TYPES.GET_UI_MODEL);
         uiState.model = model;
         uiState.uiPosition = normalizeUiPosition(model?.uiPosition || uiState.uiPosition);
+
+        const warningLevel = getStorageWarningLevel(Number(model?.totalScreenshotCount));
+        if (!warningLevel) {
+            uiState.dismissedStorageWarningLevel = null;
+        } else if (uiState.dismissedStorageWarningLevel === 'warning' && warningLevel === 'danger') {
+            uiState.dismissedStorageWarningLevel = null;
+        }
+
         uiState.lastError = '';
         applyUiHostPosition();
         renderUiPanel();
@@ -1177,6 +1319,7 @@ async function withUiMutation(action) {
 
 async function openUiPanel() {
     uiState.isUiOpen = true;
+    uiState.dismissedStorageWarningLevel = null;
     ensureUiHost();
     await refreshAndRenderUi();
 }
@@ -1186,6 +1329,7 @@ function closeUiPanel() {
     uiState.model = null;
     uiState.editingGroupId = null;
     uiState.lastError = '';
+    uiState.dismissedStorageWarningLevel = null;
 
     closeLightbox();
     revokeAllObjectUrls();
