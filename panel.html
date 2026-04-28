@@ -4,9 +4,31 @@
 <head>
     <meta charset="UTF-8">
     <title>ClipShelf</title>
-    <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <style>
+        /* --- ローカルフォントの読み込み設定 --- */
+        @font-face {
+            font-family: 'Material Symbols Rounded';
+            font-style: normal;
+            font-weight: 100 700;
+            src: url('material-symbols.woff2') format('woff2');
+        }
+
+        /* Material Symbolsの基本スタイル定義 */
+        .material-symbols-rounded {
+            font-family: 'Material Symbols Rounded';
+            font-weight: normal;
+            font-style: normal;
+            font-size: 24px;
+            line-height: 1;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            -webkit-font-smoothing: antialiased;
+        }
+
         :root {
             --bg-color: #FCFBF9;
             --accent: #D67D5C;
@@ -226,7 +248,6 @@
             transition: all 0.2s;
             gap: 8px;
             min-width: 0;
-            /* これを追加することで縮小を許可 */
         }
 
         .group-item:hover {
