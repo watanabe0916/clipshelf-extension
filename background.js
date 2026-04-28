@@ -668,54 +668,120 @@ function isNoReceiverError(error) {
     );
 }
 
+
 // === 独立ウィンドウ管理 ===
 let uiWindowId = null;
+let lastWindowBlurTime = 0; // フォーカスを失った時間を記録
+
+// ウィンドウのフォーカス変更を監視
+chrome.windows.onFocusChanged.addListener((windowId) => {
+    if (uiWindowId !== null && windowId !== uiWindowId) {
+        lastWindowBlurTime = Date.now();
+    }
+});
 
 async function toggleUiWindow() {
-    // 既にウィンドウが開いている場合はフォーカスする
     if (uiWindowId !== null) {
-        try {
-            await focusWindow(uiWindowId);
-            return { toggled: true, action: 'focused' };
-        } catch (e) {
-            uiWindowId = null; // ウィンドウが手動で閉じられていた場合
+        const winInfo = await new Promise((resolve) => {
+            chrome.windows.get(uiWindowId, (win) => {
+                if (chrome.runtime.lastError) {
+                    resolve(null);
+                } else {
+                    resolve(win);
+                }
+            });
+        });
+
+        if (winInfo) {
+            // アイコンクリック時にフォーカスが奪われるため、
+            // 現在フォーカスされているか、フォーカスを失ってから300ミリ秒以内なら「前面にあった」と判定
+            const timeSinceBlur = Date.now() - lastWindowBlurTime;
+            
+            if (winInfo.focused || timeSinceBlur < 300) {
+                await new Promise((resolve) => {
+                    chrome.windows.remove(uiWindowId, () => resolve());
+                });
+                uiWindowId = null;
+                await setStorage({ isUiOpen: false });
+                return { toggled: true, action: 'closed' };
+            } else {
+                await new Promise((resolve) => {
+                    chrome.windows.update(uiWindowId, { focused: true }, () => resolve());
+                });
+                return { toggled: true, action: 'focused' };
+            }
+        } else {
+            uiWindowId = null;
         }
     }
 
-    // 保存されている位置とサイズを取得
     const state = await getStorage(['uiPanelLeft', 'uiPanelTop', 'uiPanelWidth', 'uiPanelHeight']);
-    const width = state.uiPanelWidth || 420;
-    const height = state.uiPanelHeight || 600;
-    let left = state.uiPanelLeft;
-    let top = state.uiPanelTop;
+    const isValid = (val) => typeof val === 'number' && !isNaN(val);
+    
+    let width = isValid(state.uiPanelWidth) ? Math.round(state.uiPanelWidth) : 420;
+    let height = isValid(state.uiPanelHeight) ? Math.round(state.uiPanelHeight) : 600;
+    let left = isValid(state.uiPanelLeft) ? Math.round(state.uiPanelLeft) : undefined;
+    let top = isValid(state.uiPanelTop) ? Math.round(state.uiPanelTop) : undefined;
 
-    // パラメータを整数に変換して構成
+    width = Math.max(width, 340);
+    height = Math.max(height, 200);
+
     const createData = {
         url: chrome.runtime.getURL('panel.html'),
         type: 'popup',
-        width: Math.round(width),
-        height: Math.round(height)
+        width: width,
+        height: height
     };
 
-    if (left !== undefined && left !== null) {
-        createData.left = Math.round(left);
-    }
-    if (top !== undefined && top !== null) {
-        createData.top = Math.round(top);
-    }
+    if (left !== undefined) createData.left = left;
+    if (top !== undefined) createData.top = top;
 
-    // 独立ウィンドウを作成して開く
-    const win = await new Promise((resolve, reject) => {
-        chrome.windows.create(createData, (window) => {
-            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-            else resolve(window);
+    try {
+        const win = await new Promise((resolve, reject) => {
+            chrome.windows.create(createData, (window) => {
+                if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+                else resolve(window);
+            });
         });
-    });
-
-    uiWindowId = win.id;
-    await setStorage({ isUiOpen: true });
+        uiWindowId = win.id;
+        await setStorage({ isUiOpen: true });
+    } catch (error) {
+        const win = await new Promise((resolve) => {
+            chrome.windows.create({
+                url: chrome.runtime.getURL('panel.html'),
+                type: 'popup',
+                width: 420,
+                height: 600
+            }, resolve);
+        });
+        if (win) {
+            uiWindowId = win.id;
+            await setStorage({ isUiOpen: true });
+        }
+    }
+    
     return { toggled: true, action: 'created' };
 }
+
+chrome.windows.onRemoved.addListener((windowId) => {
+    if (windowId === uiWindowId) {
+        uiWindowId = null;
+        setStorage({ isUiOpen: false });
+    }
+});
+chrome.windows.onRemoved.addListener((windowId) => {
+    if (windowId === uiWindowId) {
+        uiWindowId = null;
+        setStorage({ isUiOpen: false });
+    }
+});
+
+chrome.windows.onRemoved.addListener((windowId) => {
+    if (windowId === uiWindowId) {
+        uiWindowId = null;
+        setStorage({ isUiOpen: false });
+    }
+});
 
 // ウィンドウが閉じられたことを検知する
 chrome.windows.onRemoved.addListener((windowId) => {
