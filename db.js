@@ -6,6 +6,11 @@ clipShelfDB.version(1).stores({
     screenshots: '++id, groupId, imageBlob, pageUrl, timestamp',
 });
 
+// nameを追加したバージョン2を定義
+clipShelfDB.version(2).stores({
+    screenshots: '++id, groupId, imageBlob, pageUrl, timestamp, name',
+});
+
 async function addScreenshot(record) {
     return clipShelfDB.table('screenshots').add(record);
 }

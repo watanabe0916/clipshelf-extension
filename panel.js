@@ -125,16 +125,14 @@ function openLightbox(screenshot) {
 
 function renderNoActiveGroupState(container, model) {
     const headerActions = document.createElement('div');
-    // 右寄せにして、下のセクションとの間に少し余白を設ける
     headerActions.style.cssText = 'display: flex; justify-content: flex-end; margin-bottom: 0px;';
 
     const supportLink = document.createElement('a');
     supportLink.href = '#'; // TODO: 後でここにKo-fiのURL（例: 'https://ko-fi.com/xxxx'）を入れます
-    supportLink.target = '_blank'; // 新しいタブで開く
-    supportLink.className = 'btn secondary'; // 控えめなグレーのボタンスタイル
+    supportLink.target = '_blank';
+    supportLink.className = 'btn secondary';
     supportLink.style.cssText = 'text-decoration: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 6px; font-size: 10px;';
     
-    // アイコンと多言語対応テキストを設定
     supportLink.innerHTML = `
         <span class="material-symbols-rounded" style="font-size: 18px;">local_cafe</span>
         ${getMessage('uiButtonSupport')}
@@ -314,7 +312,9 @@ function renderActiveGroupState(container, model) {
 
             const meta = document.createElement('span');
             meta.className = 'thumb-meta';
-            meta.textContent = new Date(screenshot.timestamp).toLocaleString();
+            // 修正箇所: 日時ではなく名前を表示し、文字数が多い時のためにtitle属性を追加
+            meta.textContent = screenshot.name;
+            meta.title = screenshot.name;
 
             item.append(img, delBtn, meta);
             item.addEventListener('click', () => openLightbox(screenshot));

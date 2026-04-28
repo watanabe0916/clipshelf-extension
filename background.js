@@ -448,6 +448,7 @@ async function persistCapturedSelection(payload, sender) {
         imageBlob,
         pageUrl,
         timestamp: Date.now(),
+        name: payload.customName || 'No name', // 追加: 名前を保存
     });
 
     if (state.groupsMetadata[activeShelfId]) {
@@ -514,6 +515,7 @@ async function buildUiModel() {
             groupId: screenshot.groupId,
             pageUrl: screenshot.pageUrl || '',
             timestamp: screenshot.timestamp,
+            name: screenshot.name || '名称未設定', // 追加: UIに名前を渡す
             imageDataUrl: await blobToDataUrl(screenshot.imageBlob),
         })),
     );

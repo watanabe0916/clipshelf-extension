@@ -34,11 +34,17 @@ const selectionState = {
 const keyboardState = {
     isSelectionKeyPressed: false,
     isSelectionKeyDown: false,
+    isTabSaveKeyDown: false,
 };
 
 let currentActiveShelfId = null;
+let settingKeySaveImage = 's';
+let settingKeySaveTab = 'a';
+let settingPromptForName = false;
 
-// === ストレージ（保存状態）の同期 ===
+// キーが離されるのを待機するための変数
+let pendingCapture = null;
+
 function normalizeStorageId(value) {
     if (typeof value !== 'string') return null;
     const trimmed = value.trim();
@@ -49,22 +55,32 @@ function hasActiveShelfId() {
     return Boolean(currentActiveShelfId);
 }
 
-// 読み込み時に現在の保存先棚IDを取得
-chrome.storage.local.get(STORAGE_KEYS.ACTIVE_SHELF_ID, (result) => {
+chrome.storage.local.get([
+    STORAGE_KEYS.ACTIVE_SHELF_ID,
+    'keySaveImage',
+    'keySaveTab',
+    'promptForName'
+], (result) => {
     currentActiveShelfId = normalizeStorageId(result[STORAGE_KEYS.ACTIVE_SHELF_ID]);
+    settingKeySaveImage = (result.keySaveImage || 's').toLowerCase();
+    settingKeySaveTab = (result.keySaveTab || 'a').toLowerCase();
+    settingPromptForName = !!result.promptForName;
 });
 
-// 独立ウィンドウで「保存を終了」などが押された時に状態を同期
 chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === 'local' && changes[STORAGE_KEYS.ACTIVE_SHELF_ID]) {
-        currentActiveShelfId = normalizeStorageId(changes[STORAGE_KEYS.ACTIVE_SHELF_ID].newValue);
-        if (!hasActiveShelfId()) {
-            resetSelectionInteractionState();
+    if (areaName === 'local') {
+        if (changes[STORAGE_KEYS.ACTIVE_SHELF_ID]) {
+            currentActiveShelfId = normalizeStorageId(changes[STORAGE_KEYS.ACTIVE_SHELF_ID].newValue);
+            if (!hasActiveShelfId()) {
+                resetSelectionInteractionState();
+            }
         }
+        if (changes.keySaveImage) settingKeySaveImage = (changes.keySaveImage.newValue || 's').toLowerCase();
+        if (changes.keySaveTab) settingKeySaveTab = (changes.keySaveTab.newValue || 'a').toLowerCase();
+        if (changes.promptForName) settingPromptForName = !!changes.promptForName.newValue;
     }
 });
 
-// === キャプチャ用の青い枠（オーバーレイ）の制御 ===
 function createSelectionOverlay() {
     const overlay = document.createElement('div');
     overlay.id = 'clipshelf-selection-overlay';
@@ -115,9 +131,24 @@ function resetSelectionInteractionState() {
     removeOverlay();
     keyboardState.isSelectionKeyDown = false;
     keyboardState.isSelectionKeyPressed = false;
+    keyboardState.isTabSaveKeyDown = false;
+    pendingCapture = null;
 }
 
-// === 選択処理のフロー ===
+function askForImageName() {
+    const now = new Date();
+    const pad = (n) => n.toString().padStart(2, '0');
+    const defaultName = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+
+    if (!settingPromptForName) return defaultName;
+
+    const promptMsg = chrome.i18n.getMessage('uiPromptEnterName') || "保存する画像の名前を入力してください:";
+    const userInput = window.prompt(promptMsg, defaultName);
+    
+    if (userInput === null) return null; 
+    return userInput.trim() || defaultName;
+}
+
 function beginSelection(event, activeShelfId) {
     selectionState.isDragging = true;
     selectionState.startX = event.clientX;
@@ -139,21 +170,62 @@ function endSelection() {
 }
 
 function scheduleSelectionCapture(rect, activeShelfId) {
-    window.setTimeout(() => {
-        chrome.runtime.sendMessage({
-            type: MESSAGE_TYPES.CAPTURE_SELECTION,
-            activeShelfId,
-            pageUrl: window.location.href,
-            selection: {
-                x: rect.x,
-                y: rect.y,
-                width: rect.width,
-                height: rect.height,
-                viewportWidth: window.innerWidth,
-                viewportHeight: window.innerHeight,
-            },
-        });
-    }, CAPTURE_DELAY_MS);
+    // OSのキー操作が完全に完了するのを待つため僅かな遅延を入れる
+    setTimeout(() => {
+        const customName = askForImageName();
+        if (customName === null) return; 
+
+        window.setTimeout(() => {
+            chrome.runtime.sendMessage({
+                type: MESSAGE_TYPES.CAPTURE_SELECTION,
+                activeShelfId,
+                pageUrl: window.location.href,
+                customName: customName, 
+                selection: {
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                    viewportWidth: window.innerWidth,
+                    viewportHeight: window.innerHeight,
+                },
+            });
+        }, CAPTURE_DELAY_MS);
+    }, 10);
+}
+
+function captureFullTab() {
+    const activeShelfId = currentActiveShelfId;
+    if (!activeShelfId) return;
+
+    setTimeout(() => {
+        const customName = askForImageName();
+        if (customName === null) return; 
+
+        const rect = {
+            x: 0,
+            y: 0,
+            width: window.innerWidth,
+            height: window.innerHeight
+        };
+
+        window.setTimeout(() => {
+            chrome.runtime.sendMessage({
+                type: MESSAGE_TYPES.CAPTURE_SELECTION,
+                activeShelfId: activeShelfId,
+                pageUrl: window.location.href,
+                customName: customName,
+                selection: {
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                    viewportWidth: window.innerWidth,
+                    viewportHeight: window.innerHeight,
+                },
+            });
+        }, CAPTURE_DELAY_MS);
+    }, 10);
 }
 
 function finalizeSelection(eventX, eventY) {
@@ -171,34 +243,64 @@ function finalizeSelection(eventX, eventY) {
     if (rect.width < MIN_SELECTION_SIZE || rect.height < MIN_SELECTION_SIZE) return;
     if (!activeShelfId) return;
 
-    scheduleSelectionCapture(rect, activeShelfId);
+    if (keyboardState.isSelectionKeyDown) {
+        // キーがまだ押されている場合はキャプチャを保留
+        pendingCapture = { rect, activeShelfId };
+    } else {
+        scheduleSelectionCapture(rect, activeShelfId);
+    }
 }
 
-// === イベントハンドラ (キーボード・マウス) ===
 function isEditableTarget(target) {
     return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
 }
 
-function isSelectionShortcutKey(event) {
-    return typeof event.key === 'string' && event.key.toLowerCase() === 's';
-}
-
 function handleKeyDown(event) {
-    if (!hasActiveShelfId() || isEditableTarget(event.target) || !isSelectionShortcutKey(event)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    keyboardState.isSelectionKeyDown = true;
-    keyboardState.isSelectionKeyPressed = true;
+    if (!hasActiveShelfId() || isEditableTarget(event.target)) return;
+
+    const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
+
+    if (key === settingKeySaveImage) {
+        event.preventDefault();
+        event.stopPropagation();
+        keyboardState.isSelectionKeyDown = true;
+        keyboardState.isSelectionKeyPressed = true;
+    } else if (key === settingKeySaveTab) {
+        if (!event.repeat) { 
+            event.preventDefault();
+            event.stopPropagation();
+            keyboardState.isTabSaveKeyDown = true;
+        }
+    }
 }
 
 function handleKeyUp(event) {
-    if (!isSelectionShortcutKey(event)) return;
-    keyboardState.isSelectionKeyDown = false;
-    keyboardState.isSelectionKeyPressed = false;
-    if (!selectionState.isDragging) return;
-    event.preventDefault();
-    event.stopPropagation();
-    finalizeSelection();
+    const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
+    
+    if (key === settingKeySaveImage) {
+        keyboardState.isSelectionKeyDown = false;
+        keyboardState.isSelectionKeyPressed = false;
+        
+        if (selectionState.isDragging) {
+            event.preventDefault();
+            event.stopPropagation();
+            finalizeSelection();
+        } else if (pendingCapture) {
+            // キーが離されたタイミングで保留していたキャプチャを実行
+            event.preventDefault();
+            event.stopPropagation();
+            const { rect, activeShelfId } = pendingCapture;
+            pendingCapture = null;
+            scheduleSelectionCapture(rect, activeShelfId);
+        }
+    } else if (key === settingKeySaveTab) {
+        if (keyboardState.isTabSaveKeyDown) {
+            keyboardState.isTabSaveKeyDown = false;
+            event.preventDefault();
+            event.stopPropagation();
+            captureFullTab();
+        }
+    }
 }
 
 function handleMouseDown(event) {
@@ -243,6 +345,7 @@ function handleContextMenu(event) {
 function handleWindowBlur() {
     keyboardState.isSelectionKeyDown = false;
     keyboardState.isSelectionKeyPressed = false;
+    keyboardState.isTabSaveKeyDown = false;
     if (selectionState.isDragging) endSelection();
 }
 
