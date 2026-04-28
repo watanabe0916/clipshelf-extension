@@ -62,7 +62,7 @@
         "message": "Saved images"
     },
     "uiNoImagesInShelf": {
-        "message": "No images in this shelf yet. Hold the S key and left-drag to save."
+        "message": "There are no images in this shelf yet. By default, you can save an area as an image by holding the 'S' key and left-dragging, or press the 'A' key to save the entire screen."
     },
     "uiSavedImageThumbnailAlt": {
         "message": "Saved image thumbnail"

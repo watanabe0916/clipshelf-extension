@@ -62,7 +62,7 @@
         "message": "Images enregistrées"
     },
     "uiNoImagesInShelf": {
-        "message": "Pas encore d'images dans cette étagère. Maintenez la touche S et faites un glisser gauche pour enregistrer."
+        "message": "Il n'y a pas encore d'images dans cette étagère. Par défaut, vous pouvez enregistrer une zone sous forme d'image en maintenant la touche 'S' enfoncée et en faisant un clic gauche glissé, ou appuyer sur la touche 'A' pour enregistrer tout l'écran."
     },
     "uiSavedImageThumbnailAlt": {
         "message": "Miniature de l'image enregistrée"

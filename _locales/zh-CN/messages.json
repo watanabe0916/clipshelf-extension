@@ -62,7 +62,7 @@
         "message": "已保存图像"
     },
     "uiNoImagesInShelf": {
-        "message": "此书架中暂无图像。按住 S 键并左键拖动以进行保存。"
+        "message": "此书架中还没有图像。默认情况下，您可以在按住“S”键的同时单击左键拖动来将该区域保存为图像，或者按“A”键保存整个屏幕。"
     },
     "uiSavedImageThumbnailAlt": {
         "message": "已保存图像的缩略图"

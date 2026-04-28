@@ -62,7 +62,7 @@
         "message": "已保存圖像"
     },
     "uiNoImagesInShelf": {
-        "message": "此書架中暫無圖像。按住 S 鍵並左鍵拖曳以進行保存。"
+        "message": "此書架中還沒有圖像。預設情況下，您可以在按住「S」鍵的同時單擊左鍵拖曳來將該區域保存為圖像，或者按「A」鍵保存整個螢幕。"
     },
     "uiSavedImageThumbnailAlt": {
         "message": "已保存圖像的縮圖"

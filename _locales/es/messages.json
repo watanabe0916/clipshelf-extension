@@ -62,7 +62,7 @@
         "message": "Imágenes guardadas"
     },
     "uiNoImagesInShelf": {
-        "message": "Aún no hay imágenes en este estante. Mantenga presionada la tecla S y arrastre con el botón izquierdo para guardar."
+        "message": "Todavía no hay imágenes en este estante. Por defecto, puedes guardar un área como imagen manteniendo presionada la tecla 'S' y arrastrando con el botón izquierdo, o presionar la tecla 'A' para guardar la pantalla completa."
     },
     "uiSavedImageThumbnailAlt": {
         "message": "Miniatura de imagen guardada"

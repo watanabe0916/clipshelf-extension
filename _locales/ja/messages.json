@@ -62,7 +62,7 @@
         "message": "保存済み画像"
     },
     "uiNoImagesInShelf": {
-        "message": "この棚にはまだ画像がありません。Sキーを押しながら左ドラッグで保存できます。"
+        "message": "この棚にはまだ画像がありません。デフォルトでSキーを押しながら左ドラッグでその範囲を画像保存、Aキーを押すと画面全体を画像保存できます。"
     },
     "uiSavedImageThumbnailAlt": {
         "message": "保存画像のサムネイル"
@@ -130,5 +130,7 @@
     },
     "uiButtonSaveSettings": {
         "message": "保存"
-    }
+    },
+    "uiPromptEnterName": { 
+        "message": "保存する画像の名前を入力してください:" }
 }

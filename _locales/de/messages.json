@@ -62,7 +62,7 @@
         "message": "Gespeicherte Bilder"
     },
     "uiNoImagesInShelf": {
-        "message": "Noch keine Bilder in diesem Regal. Halten Sie die S-Taste gedrückt und ziehen Sie mit der linken Maustaste, um zu speichern."
+        "message": "In diesem Regal befinden sich noch keine Bilder. Standardmäßig können Sie einen Bereich als Bild speichern, indem Sie die 'S'-Taste gedrückt halten und mit der linken Maustaste ziehen, oder die 'A'-Taste drücken, um den gesamten Bildschirm zu speichern."
     },
     "uiSavedImageThumbnailAlt": {
         "message": "Miniaturansicht des gespeicherten Bildes"
