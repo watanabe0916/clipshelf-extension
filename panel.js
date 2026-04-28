@@ -62,7 +62,7 @@ function createIconButton(iconName, className, onClick, titleText = '') {
     btn.type = 'button';
     btn.className = className;
     btn.title = titleText;
-    btn.innerHTML = `<span class="material-symbols-rounded" style="font-size:18px">${iconName}</span>`;
+    btn.innerHTML = `<span class="material-symbols-rounded" style="font-size:22px">${iconName}</span>`;
     btn.addEventListener('click', onClick);
     return btn;
 }
