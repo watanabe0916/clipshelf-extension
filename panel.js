@@ -67,22 +67,30 @@ function createIconButton(iconName, className, onClick, titleText = '') {
     return btn;
 }
 
+// --- UI微調整用コメント ---
+// ここが画像拡大（ライトボックス）を表示する関数です
 function openLightbox(screenshot) {
     const container = document.body;
+    
+    // 背景の暗いオーバーレイ
     const overlay = document.createElement('div');
     overlay.className = 'lightbox';
 
+    // 画像とボタンを包むコンテナ（CSSで画像の幅にフィットさせています）
     const inner = document.createElement('div');
     inner.className = 'lightbox-inner';
 
+    // 拡大画像本体
     const image = document.createElement('img');
     image.className = 'lightbox-image';
     image.src = screenshot.imageDataUrl;
     image.alt = getMessage('uiSavedImageAlt');
 
+    // ボタン配置用のコンテナ
     const actions = document.createElement('div');
     actions.className = 'lightbox-actions';
 
+    // 「リンクを開く」ボタン
     const openLinkBtn = createButton(getMessage('uiButtonOpenLink'), 'btn lightbox-open-link', (e) => {
         e.stopPropagation();
         if (screenshot.pageUrl) {
@@ -103,6 +111,7 @@ function openLightbox(screenshot) {
         openLinkBtn.disabled = true;
     }
 
+    // 「閉じる」ボタン
     const closeBtn = document.createElement('button');
     closeBtn.className = 'lightbox-close';
     closeBtn.title = getMessage('uiButtonClose');
@@ -116,6 +125,7 @@ function openLightbox(screenshot) {
         if (e.target === overlay) overlay.remove();
     });
 
+    // 構築と画面への追加
     actions.append(openLinkBtn, closeBtn);
     inner.append(image, actions);
     overlay.appendChild(inner);

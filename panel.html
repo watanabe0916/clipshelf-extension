@@ -112,7 +112,6 @@
         .btn.danger { background: #FEE2E2; color: var(--danger); }
         .btn.danger:hover { background: #FECACA; }
 
-        /* アイコンボタン（ペンの編集ボタンなど） */
         .icon-btn {
             background: #F3F4F6;
             color: var(--text-muted);
@@ -167,7 +166,7 @@
 
         .thumb-delete {
             position: absolute;
-            top: 6px;
+            top: 10px;
             right: 6px;
             width: 26px;
             height: 26px;
@@ -187,18 +186,26 @@
         .empty { color: var(--text-muted); font-size: 13px; margin: 0; text-align: center; padding: 20px; }
         .status-error { border: 1px solid #FECACA; color: var(--danger); background: #FEF2F2; border-radius: 8px; padding: 10px; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
 
-        /* ライトボックス */
+        /* --- ライトボックス（画像拡大表示）のスタイル --- */
+        /* 背景のオーバーレイ */
         .lightbox { position: fixed; inset: 0; background: rgba(25, 25, 25, 0.8); backdrop-filter: blur(4px); display: grid; place-items: center; padding: 20px; z-index: 100; }
-        .lightbox-inner { position: relative; width: min(90vw, 1000px); max-height: 90vh; border-radius: var(--radius-lg); overflow: hidden; background: transparent; }
-        .lightbox-image { width: 100%; height: auto; max-height: 90vh; object-fit: contain; display: block; border-radius: var(--radius-lg); }
         
+        /* 画像サイズに合わせてコンテナを縮小（ボタンがはみ出ないように width: fit-content を指定） */
+        .lightbox-inner { position: relative; width: fit-content; max-width: 90vw; max-height: 90vh; border-radius: var(--radius-lg); overflow: hidden; background: transparent; display: flex; justify-content: center; }
+        
+        /* 拡大画像本体 */
+        .lightbox-image { width: auto; height: auto; max-width: 90vw; max-height: 90vh; object-fit: contain; display: block; border-radius: var(--radius-lg); }
+        
+        /* 画像内の上部にボタンを配置するコンテナ */
         .lightbox-actions { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
         .lightbox-actions .btn, .lightbox-close { pointer-events: auto; }
 
+        /* 「リンクを開く」ボタン */
         .lightbox-open-link { background: rgba(255, 255, 255, 0.9); color: var(--text-main); font-size: 13px; padding: 8px 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         .lightbox-open-link:hover { background: var(--accent); color: #FFF; }
         .lightbox-open-link:disabled { background: rgba(255, 255, 255, 0.5); cursor: not-allowed; }
 
+        /* 閉じるボタン */
         .lightbox-close {
             width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 255, 255, 0.9); color: var(--text-main);
             border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: all 0.2s;
