@@ -112,5 +112,8 @@
                 "content": "$2"
             }
         }
+    },
+    "uiButtonSupport": {
+        "message": "支援する"
     }
 }

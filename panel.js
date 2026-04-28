@@ -124,6 +124,25 @@ function openLightbox(screenshot) {
 }
 
 function renderNoActiveGroupState(container, model) {
+    const headerActions = document.createElement('div');
+    // 右寄せにして、下のセクションとの間に少し余白を設ける
+    headerActions.style.cssText = 'display: flex; justify-content: flex-end; margin-bottom: 0px;';
+
+    const supportLink = document.createElement('a');
+    supportLink.href = '#'; // TODO: 後でここにKo-fiのURL（例: 'https://ko-fi.com/xxxx'）を入れます
+    supportLink.target = '_blank'; // 新しいタブで開く
+    supportLink.className = 'btn secondary'; // 控えめなグレーのボタンスタイル
+    supportLink.style.cssText = 'text-decoration: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 6px; font-size: 10px;';
+    
+    // アイコンと多言語対応テキストを設定
+    supportLink.innerHTML = `
+        <span class="material-symbols-rounded" style="font-size: 18px;">local_cafe</span>
+        ${getMessage('uiButtonSupport')}
+    `;
+    
+    headerActions.appendChild(supportLink);
+    container.appendChild(headerActions);
+    
     const createSection = document.createElement('section');
     createSection.className = 'section';
     createSection.innerHTML = `<h3 class="section-title"><span class="material-symbols-rounded" style="font-size:23px">add_circle</span>${getMessage('uiCreateNewShelfTitle')}</h3>`;
