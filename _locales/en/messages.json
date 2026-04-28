@@ -115,5 +115,20 @@
     },
     "uiButtonSupport": {
         "message": "Support"
+    },
+    "uiSettingsTitle": {
+        "message": "Settings"
+    },
+    "uiSettingsKeyImage": {
+        "message": "Image Save Key"
+    },
+    "uiSettingsKeyTab": {
+        "message": "Full Page Save Key"
+    },
+    "uiSettingsPromptName": {
+        "message": "Set name on save"
+    },
+    "uiButtonSaveSettings": {
+        "message": "Save"
     }
 }

@@ -115,5 +115,20 @@
     },
     "uiButtonSupport": {
         "message": "支援する"
+    },
+    "uiSettingsTitle": {
+        "message": "設定"
+    },
+    "uiSettingsKeyImage": {
+        "message": "画像保存キー"
+    },
+    "uiSettingsKeyTab": {
+        "message": "全画面保存キー"
+    },
+    "uiSettingsPromptName": {
+        "message": "保存時に名前を設定する"
+    },
+    "uiButtonSaveSettings": {
+        "message": "保存"
     }
 }

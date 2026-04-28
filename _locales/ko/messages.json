@@ -115,5 +115,20 @@
     },
     "uiButtonSupport": {
         "message": "후원하기"
+    },
+    "uiSettingsTitle": {
+        "message": "설정"
+    },
+    "uiSettingsKeyImage": {
+        "message": "이미지 저장 키"
+    },
+    "uiSettingsKeyTab": {
+        "message": "전체 화면 저장 키"
+    },
+    "uiSettingsPromptName": {
+        "message": "저장 시 이름 설정"
+    },
+    "uiButtonSaveSettings": {
+        "message": "저장"
     }
 }

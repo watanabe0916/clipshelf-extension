@@ -115,5 +115,20 @@
     },
     "uiButtonSupport": {
         "message": "Apoyar"
+    },
+    "uiSettingsTitle": {
+        "message": "Ajustes"
+    },
+    "uiSettingsKeyImage": {
+        "message": "Tecla de guardado de imagen"
+    },
+    "uiSettingsKeyTab": {
+        "message": "Tecla de guardado de pantalla completa"
+    },
+    "uiSettingsPromptName": {
+        "message": "Establecer nombre al guardar"
+    },
+    "uiButtonSaveSettings": {
+        "message": "Guardar"
     }
 }

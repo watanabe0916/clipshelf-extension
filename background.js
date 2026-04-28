@@ -6,6 +6,9 @@ const STORAGE_DEFAULTS = {
     activeGroupId: null,
     activeShelfId: null,
     groupsMetadata: {},
+    keySaveImage: 's',
+    keySaveTab: 'a',
+    promptForName: false
 };
 
 const MESSAGE_TYPES = {
@@ -29,6 +32,7 @@ const ACTION_TYPES = {
     CLOSE_ALL_UIS: 'closeAllUIs',
     FORCE_CLOSE_UI: 'forceCloseUI',
     FORCE_DISABLE_SELECTION: 'forceDisableSelection',
+    CAPTURE_VISIBLE_TAB: 'captureVisibleTab',
 };
 
 const CONTENT_INITIAL_UI_SKIP_FLAG = '__CLIPSHELF_SKIP_INITIAL_UI_STATE';
@@ -936,6 +940,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 });
             });
 
+        return true;
+    }
+
+    if (message?.action === ACTION_TYPES.CAPTURE_VISIBLE_TAB) {
+        chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
+            if (chrome.runtime.lastError) {
+                sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+            } else {
+                sendResponse({ ok: true, dataUrl });
+            }
+        });
         return true;
     }
 

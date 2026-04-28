@@ -115,5 +115,20 @@
     },
     "uiButtonSupport": {
         "message": "Soutenir"
+    },
+    "uiSettingsTitle": {
+        "message": "Paramètres"
+    },
+    "uiSettingsKeyImage": {
+        "message": "Touche d'enregistrement d'image"
+    },
+    "uiSettingsKeyTab": {
+        "message": "Touche d'enregistrement plein écran"
+    },
+    "uiSettingsPromptName": {
+        "message": "Définir le nom lors de l'enregistrement"
+    },
+    "uiButtonSaveSettings": {
+        "message": "Enregistrer"
     }
 }

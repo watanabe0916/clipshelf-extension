@@ -1,6 +1,35 @@
 <!DOCTYPE html>
 <html lang="ja">
 
+<body>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <button id="settingsButton" class="btn secondary"
+            style="display: inline-flex; align-items: center; padding: 6px;">
+            <span class="material-symbols-rounded">settings</span>
+        </button>
+
+    </div>
+
+    <div id="settingsPanel" style="display: none; padding: 10px; border: 1px solid #ccc; margin-bottom: 10px;">
+        <h3 id="settingsTitle"></h3>
+        <div style="margin-bottom: 8px;">
+            <label id="labelKeyImage"></label>
+            <input type="text" id="inputKeySaveImage" maxlength="1" style="width: 30px; text-align: center;">
+        </div>
+        <div style="margin-bottom: 8px;">
+            <label id="labelKeyTab"></label>
+            <input type="text" id="inputKeySaveTab" maxlength="1" style="width: 30px; text-align: center;">
+        </div>
+        <div style="margin-bottom: 8px;">
+            <label>
+                <input type="checkbox" id="inputPromptForName">
+                <span id="labelPromptName"></span>
+            </label>
+        </div>
+        <button id="saveSettingsBtn" class="btn primary"></button>
+    </div>
+</body>
+
 <head>
     <meta charset="UTF-8">
     <title>ClipShelf</title>
@@ -43,6 +72,7 @@
             --shadow-md: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
             --danger: #EF4444;
         }
+
 
         *,
         *::before,

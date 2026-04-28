@@ -367,4 +367,47 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === 'local') refreshUi();
 });
 
+function initSettings() {
+    const settingsButton = document.getElementById('settingsButton');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const btnSave = document.getElementById('saveSettingsBtn');
+
+    if (!settingsButton || !settingsPanel || !btnSave) return;
+
+    const elKeyImage = document.getElementById('inputKeySaveImage');
+    const elKeyTab = document.getElementById('inputKeySaveTab');
+    const elPromptName = document.getElementById('inputPromptForName');
+
+    document.getElementById('settingsTitle').textContent = getMessage('uiSettingsTitle');
+    document.getElementById('labelKeyImage').textContent = getMessage('uiSettingsKeyImage') + ': ';
+    document.getElementById('labelKeyTab').textContent = getMessage('uiSettingsKeyTab') + ': ';
+    document.getElementById('labelPromptName').textContent = getMessage('uiSettingsPromptName');
+    btnSave.textContent = getMessage('uiButtonSaveSettings');
+
+    settingsButton.addEventListener('click', () => {
+        if (settingsPanel.style.display === 'none') {
+            chrome.storage.local.get(['keySaveImage', 'keySaveTab', 'promptForName'], (items) => {
+                elKeyImage.value = items.keySaveImage || 's';
+                elKeyTab.value = items.keySaveTab || 'a';
+                elPromptName.checked = !!items.promptForName;
+                settingsPanel.style.display = 'block';
+            });
+        } else {
+            settingsPanel.style.display = 'none';
+        }
+    });
+
+    btnSave.addEventListener('click', () => {
+        const newSettings = {
+            keySaveImage: elKeyImage.value.toLowerCase() || 's',
+            keySaveTab: elKeyTab.value.toLowerCase() || 'a',
+            promptForName: elPromptName.checked
+        };
+        chrome.storage.local.set(newSettings, () => {
+            settingsPanel.style.display = 'none';
+        });
+    });
+}
+
+initSettings();
 refreshUi();

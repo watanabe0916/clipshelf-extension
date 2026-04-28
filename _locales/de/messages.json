@@ -115,5 +115,20 @@
     },
     "uiButtonSupport": {
         "message": "Unterstützen"
+    },
+    "uiSettingsTitle": {
+        "message": "Einstellungen"
+    },
+    "uiSettingsKeyImage": {
+        "message": "Bild-Speichertaste"
+    },
+    "uiSettingsKeyTab": {
+        "message": "Vollbild-Speichertaste"
+    },
+    "uiSettingsPromptName": {
+        "message": "Name beim Speichern festlegen"
+    },
+    "uiButtonSaveSettings": {
+        "message": "Speichern"
     }
 }
