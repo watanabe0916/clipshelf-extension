@@ -29,6 +29,8 @@
         lastY: 0,
         activeShelfId: null,
         overlayElement: null,
+        captureTarget: null,
+        pointerId: null,
     };
 
     const keyboardState = {
@@ -130,6 +132,10 @@
         selectionState.isDragging = false;
         selectionState.activeShelfId = null;
         removeOverlay();
+
+        selectionState.captureTarget = null;
+        selectionState.pointerId = null;
+
         keyboardState.isSelectionKeyDown = false;
         keyboardState.isSelectionKeyPressed = false;
         keyboardState.isTabSaveKeyDown = false;
@@ -157,6 +163,9 @@
         selectionState.lastX = event.clientX;
         selectionState.lastY = event.clientY;
         selectionState.activeShelfId = activeShelfId;
+        selectionState.pointerId = event.pointerId;
+
+        removeOverlay();
 
         const overlay = createSelectionOverlay();
         selectionState.overlayElement = overlay;
@@ -165,10 +174,10 @@
 
         try {
             if (event.target && typeof event.target.setPointerCapture === 'function') {
-                event.target.setPointerCapture(event.pointerId);
+                event.target.setPointerCapture(selectionState.pointerId);
+                selectionState.captureTarget = event.target; // 解除用に要素を保存
             }
-        } catch (e) {
-        }
+        } catch (e) { }
     }
 
     function endSelection() {
@@ -177,8 +186,12 @@
         removeOverlay();
 
         try {
-            document.documentElement.releasePointerCapture(event?.pointerId);
+            if (selectionState.captureTarget && selectionState.pointerId !== null) {
+                selectionState.captureTarget.releasePointerCapture(selectionState.pointerId);
+            }
         } catch (e) { }
+        selectionState.captureTarget = null;
+        selectionState.pointerId = null;
     }
 
     function scheduleSelectionCapture(rect, activeShelfId) {
@@ -245,10 +258,12 @@
         selectionState.isDragging = false;
 
         try {
-            if (pointerId !== undefined && document.documentElement.hasPointerCapture(pointerId)) {
-                document.documentElement.releasePointerCapture(pointerId);
+            if (selectionState.captureTarget && selectionState.pointerId !== null) {
+                selectionState.captureTarget.releasePointerCapture(selectionState.pointerId);
             }
         } catch (e) { }
+        selectionState.captureTarget = null;
+        selectionState.pointerId = null;
 
         const finalX = Number.isFinite(eventX) ? eventX : selectionState.lastX;
         const finalY = Number.isFinite(eventY) ? eventY : selectionState.lastY;
@@ -262,7 +277,6 @@
         if (!activeShelfId) return;
 
         if (keyboardState.isSelectionKeyDown) {
-            // キーがまだ押されている場合はキャプチャを保留
             pendingCapture = { rect, activeShelfId };
         } else {
             scheduleSelectionCapture(rect, activeShelfId);
@@ -323,6 +337,8 @@
 
     function handlePointerDown(event) {
         if (!hasActiveShelfId() || event.button !== 0 || !keyboardState.isSelectionKeyPressed || selectionState.isDragging) return;
+
+        if (!keyboardState.isSelectionKeyPressed || selectionState.isDragging) return;
         event.preventDefault();
         event.stopPropagation();
         beginSelection(event, currentActiveShelfId);
@@ -343,7 +359,7 @@
         if (!hasActiveShelfId() || !selectionState.isDragging) return;
         event.preventDefault();
         event.stopPropagation();
-        finalizeSelection(event.clientX, event.clientY, event.pointerId);
+        finalizeSelection(event.clientX, event.clientY);
     }
 
     function handlePointerCancel(event) {
