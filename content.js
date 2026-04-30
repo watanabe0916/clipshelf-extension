@@ -9,6 +9,10 @@
         CAPTURE_SELECTION: 'CLIPSHELF_CAPTURE_SELECTION',
     };
 
+    const WINDOW_MESSAGE_TYPES = {
+        FRAME_CAPTURE_REQUEST: 'CLIPSHELF_FRAME_CAPTURE_REQUEST',
+    };
+
     const ACTION_TYPES = {
         FORCE_DISABLE_SELECTION: 'forceDisableSelection',
     };
@@ -109,6 +113,104 @@
         return { x, y, width, height };
     }
 
+    function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+    }
+
+    function clampRectToViewport(rect, viewportWidth = window.innerWidth, viewportHeight = window.innerHeight) {
+        const left = clamp(rect.x, 0, viewportWidth);
+        const top = clamp(rect.y, 0, viewportHeight);
+        const right = clamp(rect.x + rect.width, 0, viewportWidth);
+        const bottom = clamp(rect.y + rect.height, 0, viewportHeight);
+
+        return {
+            x: left,
+            y: top,
+            width: Math.max(0, right - left),
+            height: Math.max(0, bottom - top),
+        };
+    }
+
+    function isTopFrame() {
+        try {
+            return window.top === window;
+        } catch {
+            return true;
+        }
+    }
+
+    function findChildFrameElement(sourceWindow) {
+        if (!sourceWindow) return null;
+
+        const frames = document.querySelectorAll('iframe, frame');
+        for (const frame of frames) {
+            try {
+                if (frame.contentWindow === sourceWindow) {
+                    return frame;
+                }
+            } catch { }
+        }
+
+        return null;
+    }
+
+    function dispatchCaptureRequest(activeShelfId, customName, rect) {
+        const clampedRect = clampRectToViewport(rect);
+        if (clampedRect.width < MIN_SELECTION_SIZE || clampedRect.height < MIN_SELECTION_SIZE) return;
+
+        const payload = {
+            activeShelfId,
+            customName,
+            selection: {
+                x: clampedRect.x,
+                y: clampedRect.y,
+                width: clampedRect.width,
+                height: clampedRect.height,
+                viewportWidth: window.innerWidth,
+                viewportHeight: window.innerHeight,
+            },
+        };
+
+        if (!isTopFrame() && window.parent) {
+            window.parent.postMessage({
+                type: WINDOW_MESSAGE_TYPES.FRAME_CAPTURE_REQUEST,
+                payload,
+            }, '*');
+            return;
+        }
+
+        chrome.runtime.sendMessage({
+            type: MESSAGE_TYPES.CAPTURE_SELECTION,
+            activeShelfId,
+            pageUrl: window.location.href,
+            customName,
+            selection: payload.selection,
+        });
+    }
+
+    function handleFrameCaptureMessage(event) {
+        const message = event?.data;
+        if (!message || message.type !== WINDOW_MESSAGE_TYPES.FRAME_CAPTURE_REQUEST) return;
+
+        const payload = message.payload;
+        if (!payload || !payload.selection) return;
+        const activeShelfId = normalizeStorageId(payload.activeShelfId);
+        if (!activeShelfId || activeShelfId !== currentActiveShelfId) return;
+
+        const frame = findChildFrameElement(event.source);
+        if (!frame) return;
+
+        const frameRect = frame.getBoundingClientRect();
+        const rect = {
+            x: Number(payload.selection.x) + frameRect.left,
+            y: Number(payload.selection.y) + frameRect.top,
+            width: Number(payload.selection.width),
+            height: Number(payload.selection.height),
+        };
+
+        dispatchCaptureRequest(activeShelfId, payload.customName, rect);
+    }
+
     function updateOverlayRect(currentX, currentY) {
         if (!selectionState.overlayElement) return;
         selectionState.lastX = currentX;
@@ -201,20 +303,7 @@
             if (customName === null) return;
 
             window.setTimeout(() => {
-                chrome.runtime.sendMessage({
-                    type: MESSAGE_TYPES.CAPTURE_SELECTION,
-                    activeShelfId,
-                    pageUrl: window.location.href,
-                    customName: customName,
-                    selection: {
-                        x: rect.x,
-                        y: rect.y,
-                        width: rect.width,
-                        height: rect.height,
-                        viewportWidth: window.innerWidth,
-                        viewportHeight: window.innerHeight,
-                    },
-                });
+                dispatchCaptureRequest(activeShelfId, customName, rect);
             }, CAPTURE_DELAY_MS);
         }, 10);
     }
@@ -272,7 +361,7 @@
 
         removeOverlay();
 
-        const rect = getRectFromPoints(selectionState.startX, selectionState.startY, finalX, finalY);
+        const rect = clampRectToViewport(getRectFromPoints(selectionState.startX, selectionState.startY, finalX, finalY));
         if (rect.width < MIN_SELECTION_SIZE || rect.height < MIN_SELECTION_SIZE) return;
         if (!activeShelfId) return;
 
@@ -288,6 +377,7 @@
     }
 
     function handleKeyDown(event) {
+        if (!event.isTrusted) return;
         if (!hasActiveShelfId() || isEditableTarget(event.target)) return;
 
         const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
@@ -307,6 +397,7 @@
     }
 
     function handleKeyUp(event) {
+        if (!event.isTrusted) return;
         const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
 
         if (key === settingKeySaveImage) {
@@ -336,6 +427,7 @@
     }
 
     function handlePointerDown(event) {
+        if (!event.isTrusted) return;
         if (!hasActiveShelfId() || event.button !== 0 || !keyboardState.isSelectionKeyPressed || selectionState.isDragging) return;
 
         if (!keyboardState.isSelectionKeyPressed || selectionState.isDragging) return;
@@ -345,6 +437,7 @@
     }
 
     function handlePointerMove(event) {
+        if (!event.isTrusted) return;
         if (!hasActiveShelfId() || !selectionState.isDragging) return;
         
         if (event.pointerType === 'mouse' && (event.buttons & 1) === 0) {
@@ -358,6 +451,7 @@
     }
 
     function handlePointerUp(event) {
+        if (!event.isTrusted) return;
         if (!hasActiveShelfId() || !selectionState.isDragging) return;
         event.preventDefault();
         event.stopPropagation();
@@ -365,6 +459,7 @@
     }
 
     function handlePointerCancel(event) {
+        if (!event.isTrusted) return;
         if (!hasActiveShelfId() || !selectionState.isDragging) return;
         event.preventDefault();
         event.stopPropagation();
@@ -389,6 +484,7 @@
         keyboardState.isSelectionKeyDown = false;
         keyboardState.isSelectionKeyPressed = false;
         keyboardState.isTabSaveKeyDown = false;
+        pendingCapture = null;
         if (selectionState.isDragging) endSelection();
     }
 
@@ -407,6 +503,7 @@
     document.addEventListener('dragstart', blockNativeSelectionWhileDragging, true);
     document.addEventListener('selectstart', blockNativeSelectionWhileDragging, true);
     document.addEventListener('contextmenu', handleContextMenu, true);
+    window.addEventListener('message', handleFrameCaptureMessage, true);
     window.addEventListener('blur', handleWindowBlur, true);
 
 })();

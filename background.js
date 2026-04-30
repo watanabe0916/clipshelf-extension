@@ -150,6 +150,24 @@ function updateTab(tabId, updateProperties) {
     });
 }
 
+function getTab(tabId) {
+    return new Promise((resolve, reject) => {
+        if (!Number.isInteger(tabId)) {
+            reject(new Error('A valid tab id is required.'));
+            return;
+        }
+
+        chrome.tabs.get(tabId, (tab) => {
+            if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+                return;
+            }
+
+            resolve(tab);
+        });
+    });
+}
+
 function focusWindow(windowId) {
     return new Promise((resolve, reject) => {
         chrome.windows.update(windowId, { focused: true }, (window) => {
@@ -218,6 +236,7 @@ async function injectContentScriptIntoExistingTabs() {
 
         try {
             await executeScriptOnTab(tabId, {
+                target: { tabId, allFrames: true },
                 files: ['content.js'],
             });
         } catch (error) {
@@ -441,7 +460,18 @@ async function persistCapturedSelection(payload, sender) {
             ? payload.pageUrl
             : sender?.tab?.url || '';
 
-    const dataUrl = await captureVisibleTab(sender?.tab?.windowId, { format: 'png' });
+    const senderTabId = sender?.tab?.id;
+    const senderWindowId = sender?.tab?.windowId;
+    if (!Number.isInteger(senderTabId) || !Number.isInteger(senderWindowId)) {
+        return { saved: false, reason: 'missing-sender-tab' };
+    }
+
+    const senderTab = await getTab(senderTabId);
+    if (!senderTab?.active || senderTab.windowId !== senderWindowId) {
+        return { saved: false, reason: 'sender-tab-not-active' };
+    }
+
+    const dataUrl = await captureVisibleTab(senderWindowId, { format: 'png' });
     const imageBlob = await cropDataUrlToBlob(dataUrl, selection);
 
     await self.ClipShelfDB.addScreenshot({
