@@ -15,6 +15,7 @@ const STORAGE_DEFAULTS = {
 const MESSAGE_TYPES = {
     CAPTURE_SELECTION: 'CLIPSHELF_CAPTURE_SELECTION',
     GET_UI_MODEL: 'CLIPSHELF_GET_UI_MODEL',
+    GET_SCREENSHOTS_PAGE: 'CLIPSHELF_GET_SCREENSHOTS_PAGE',
     CREATE_GROUP: 'CLIPSHELF_CREATE_GROUP',
     RENAME_GROUP: 'CLIPSHELF_RENAME_GROUP',
     DELETE_GROUP: 'CLIPSHELF_DELETE_GROUP',
@@ -474,12 +475,32 @@ async function persistCapturedSelection(payload, sender) {
     const dataUrl = await captureVisibleTab(senderWindowId, { format: 'png' });
     const imageBlob = await cropDataUrlToBlob(dataUrl, selection);
 
-    await self.ClipShelfDB.addScreenshot({
+    const screenshotRecord = {
         groupId: activeShelfId,
         imageBlob,
         pageUrl,
         timestamp: Date.now(),
         name: payload.customName || 'No name', // 追加: 名前を保存
+    };
+    const screenshotId = await self.ClipShelfDB.addScreenshot(screenshotRecord);
+    const screenshotForUi = {
+        id: screenshotId,
+        groupId: activeShelfId,
+        pageUrl,
+        timestamp: screenshotRecord.timestamp,
+        name: screenshotRecord.name,
+        imageDataUrl: await blobToDataUrl(imageBlob),
+    };
+
+    void sendMessageToTab(sender?.tab?.id, {
+        type: EVENT_TYPES.SCREENSHOT_SAVED,
+        groupId: activeShelfId,
+        screenshot: screenshotForUi,
+    });
+    chrome.runtime.sendMessage({
+        type: EVENT_TYPES.SCREENSHOT_SAVED,
+        groupId: activeShelfId,
+        screenshot: screenshotForUi,
     });
 
     if (state.groupsMetadata[activeShelfId]) {
@@ -491,12 +512,7 @@ async function persistCapturedSelection(payload, sender) {
         await setStorage({ groupsMetadata });
     }
 
-    void sendMessageToTab(sender?.tab?.id, {
-        type: EVENT_TYPES.SCREENSHOT_SAVED,
-        groupId: activeShelfId,
-    });
-
-    return { saved: true };
+    return { saved: true, screenshot: screenshotForUi };
 }
 
 async function buildUiModel() {
@@ -539,18 +555,6 @@ async function buildUiModel() {
         }))
         .sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt || a.name.localeCompare(b.name));
 
-    const screenshots = activeGroupId ? await self.ClipShelfDB.getScreenshotsByGroup(activeGroupId) : [];
-    const screenshotsForUi = await Promise.all(
-        screenshots.map(async (screenshot) => ({
-            id: screenshot.id,
-            groupId: screenshot.groupId,
-            pageUrl: screenshot.pageUrl || '',
-            timestamp: screenshot.timestamp,
-            name: screenshot.name || '名称未設定', // 追加: UIに名前を渡す
-            imageDataUrl: await blobToDataUrl(screenshot.imageBlob),
-        })),
-    );
-
     return {
         isUiOpen: state.isUiOpen,
         uiPosition: state.uiPosition,
@@ -564,7 +568,51 @@ async function buildUiModel() {
                 count: countsByGroupId[activeGroupId] || 0,
             }
             : null,
+        screenshots: [],
+    };
+}
+
+function normalizePageSize(value) {
+    const pageSize = Math.floor(Number(value));
+    if (!Number.isFinite(pageSize)) return 30;
+    return clamp(pageSize, 1, 60);
+}
+
+function normalizeOffset(value) {
+    const offset = Math.floor(Number(value));
+    return Number.isFinite(offset) && offset > 0 ? offset : 0;
+}
+
+async function getScreenshotsPage(payload) {
+    const state = await getStoredAppState();
+    const requestedGroupId = normalizeStorageId(payload?.groupId);
+    const groupId = requestedGroupId || state.activeGroupId;
+    if (!groupId || !state.groupsMetadata[groupId]) {
+        return { groupId: null, screenshots: [], hasMore: false, totalCount: 0, nextOffset: 0 };
+    }
+
+    const offset = normalizeOffset(payload?.offset);
+    const limit = normalizePageSize(payload?.limit);
+    const totalCount = await self.ClipShelfDB.getScreenshotCountByGroupId(groupId);
+    const screenshots = await self.ClipShelfDB.getScreenshotsByGroupPage(groupId, offset, limit);
+    const screenshotsForUi = await Promise.all(
+        screenshots.map(async (screenshot) => ({
+            id: screenshot.id,
+            groupId: screenshot.groupId,
+            pageUrl: screenshot.pageUrl || '',
+            timestamp: screenshot.timestamp,
+            name: screenshot.name || '名称未設定',
+            imageDataUrl: await blobToDataUrl(screenshot.imageBlob),
+        })),
+    );
+
+    const nextOffset = offset + screenshotsForUi.length;
+    return {
+        groupId,
         screenshots: screenshotsForUi,
+        hasMore: nextOffset < totalCount,
+        totalCount,
+        nextOffset,
     };
 }
 
@@ -893,6 +941,8 @@ async function routeRuntimeMessage(message, sender) {
             return persistCapturedSelection(message, sender);
         case MESSAGE_TYPES.GET_UI_MODEL:
             return buildUiModel();
+        case MESSAGE_TYPES.GET_SCREENSHOTS_PAGE:
+            return getScreenshotsPage(message);
         case MESSAGE_TYPES.CREATE_GROUP:
             return createGroup(message);
         case MESSAGE_TYPES.RENAME_GROUP:

@@ -1,5 +1,6 @@
 const MESSAGE_TYPES = {
     GET_UI_MODEL: 'CLIPSHELF_GET_UI_MODEL',
+    GET_SCREENSHOTS_PAGE: 'CLIPSHELF_GET_SCREENSHOTS_PAGE',
     CREATE_GROUP: 'CLIPSHELF_CREATE_GROUP',
     RENAME_GROUP: 'CLIPSHELF_RENAME_GROUP',
     DELETE_GROUP: 'CLIPSHELF_DELETE_GROUP',
@@ -12,16 +13,35 @@ const ACTION_TYPES = {
     OPEN_OR_SWITCH_TAB: 'openOrSwitchTab',
 };
 
+const EVENT_TYPES = {
+    SCREENSHOT_SAVED: 'CLIPSHELF_SCREENSHOT_SAVED',
+};
+
+const SCREENSHOT_PAGE_SIZE = 10;
+const SCREENSHOT_AUTO_LOAD_DELAY_MS = 80;
+
 const uiState = {
     model: null,
     editingGroupId: null,
     lastError: '',
     lightboxUrl: null,
-    thumbSize: 'medium'
+    thumbSize: 'medium',
+    screenshotPaging: {
+        groupId: null,
+        items: [],
+        offset: 0,
+        totalCount: 0,
+        hasMore: false,
+        isLoading: false,
+        requestId: 0,
+    }
 };
 
 let suppressNextGroupsMetadataRefresh = false;
 let suppressGroupsMetadataRefreshTimer = null;
+let lastActiveGroupId = null;
+let suppressNextScreenshotStorageRefresh = false;
+let autoScreenshotLoadTimer = null;
 
 function suppressNextLocalGroupsMetadataRefresh() {
     suppressNextGroupsMetadataRefresh = true;
@@ -103,6 +123,38 @@ function applyGroupNameToModel(groupId, name) {
     }
 }
 
+function resetScreenshotPaging(groupId, totalCount = 0) {
+    if (autoScreenshotLoadTimer) {
+        clearTimeout(autoScreenshotLoadTimer);
+        autoScreenshotLoadTimer = null;
+    }
+
+    uiState.screenshotPaging = {
+        groupId,
+        items: [],
+        offset: 0,
+        totalCount,
+        hasMore: totalCount > 0,
+        isLoading: false,
+        requestId: uiState.screenshotPaging.requestId + 1,
+    };
+}
+
+function syncScreenshotPagingWithModel() {
+    const activeGroupId = uiState.model?.activeGroupId || null;
+    const totalCount = uiState.model?.activeGroup?.count || 0;
+    const paging = uiState.screenshotPaging;
+
+    if (
+        paging.groupId !== activeGroupId ||
+        paging.totalCount !== totalCount ||
+        lastActiveGroupId !== activeGroupId
+    ) {
+        resetScreenshotPaging(activeGroupId, totalCount);
+    }
+    lastActiveGroupId = activeGroupId;
+}
+
 function renderActiveGroupTitleOnly() {
     if (!uiState.model?.activeGroup) {
         renderUi();
@@ -118,6 +170,186 @@ function renderActiveGroupTitleOnly() {
     } else {
         renderUi();
     }
+}
+
+function createScreenshotItem(screenshot) {
+    const item = document.createElement('div');
+    item.className = 'thumb-item';
+
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.src = screenshot.imageDataUrl;
+    img.alt = getMessage('uiSavedImageThumbnailAlt');
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'thumb-delete';
+    delBtn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px">close</span>';
+    delBtn.title = getMessage('uiDeleteImageTitle');
+    delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await sendRuntimeMessage(MESSAGE_TYPES.DELETE_SCREENSHOT, { id: screenshot.id });
+        refreshUi();
+    });
+
+    const meta = document.createElement('span');
+    meta.className = 'thumb-meta';
+    meta.textContent = screenshot.name;
+    meta.title = screenshot.name;
+
+    item.append(img, delBtn, meta);
+    item.addEventListener('click', () => openLightbox(screenshot));
+    return item;
+}
+
+function appendScreenshotsToGrid(grid, screenshots) {
+    screenshots.forEach((screenshot) => {
+        grid.appendChild(createScreenshotItem(screenshot));
+    });
+}
+
+function prependScreenshotToGrid(grid, screenshot) {
+    grid.prepend(createScreenshotItem(screenshot));
+}
+
+function updateScreenshotLoadStatus(section) {
+    const paging = uiState.screenshotPaging;
+    const status = section.querySelector('.thumb-load-status');
+    if (!status) return;
+
+    if (paging.isLoading && paging.items.length === 0) {
+        status.textContent = getMessage('uiLoadingData');
+        status.hidden = false;
+        return;
+    }
+
+    if (paging.isLoading) {
+        status.textContent = getMessage('uiLoadingData');
+        status.hidden = false;
+        return;
+    }
+
+    status.textContent = '';
+    status.hidden = true;
+}
+
+function scheduleNextScreenshotPage(section) {
+    const paging = uiState.screenshotPaging;
+    if (!section?.isConnected || !paging.groupId || paging.isLoading || !paging.hasMore) return;
+
+    if (autoScreenshotLoadTimer) {
+        clearTimeout(autoScreenshotLoadTimer);
+    }
+
+    autoScreenshotLoadTimer = setTimeout(() => {
+        autoScreenshotLoadTimer = null;
+        loadNextScreenshotPage(section);
+    }, SCREENSHOT_AUTO_LOAD_DELAY_MS);
+}
+
+async function loadNextScreenshotPage(section) {
+    const paging = uiState.screenshotPaging;
+    const groupId = paging.groupId;
+    if (!section?.isConnected || !groupId || paging.isLoading || !paging.hasMore) return;
+
+    const requestId = paging.requestId + 1;
+    paging.requestId = requestId;
+    paging.isLoading = true;
+    updateScreenshotLoadStatus(section);
+
+    try {
+        const page = await sendRuntimeMessage(MESSAGE_TYPES.GET_SCREENSHOTS_PAGE, {
+            groupId,
+            offset: paging.offset,
+            limit: SCREENSHOT_PAGE_SIZE,
+        });
+
+        if (uiState.screenshotPaging.requestId !== requestId || uiState.screenshotPaging.groupId !== groupId) {
+            return;
+        }
+
+        const screenshots = Array.isArray(page?.screenshots) ? page.screenshots : [];
+        paging.items = paging.items.concat(screenshots);
+        paging.offset = Number.isFinite(page?.nextOffset) ? page.nextOffset : paging.items.length;
+        paging.totalCount = Number.isFinite(page?.totalCount) ? page.totalCount : paging.totalCount;
+        paging.hasMore = Boolean(page?.hasMore);
+        paging.isLoading = false;
+
+        if (!section.isConnected) {
+            renderUi();
+            return;
+        }
+
+        const grid = section.querySelector('.thumb-grid');
+        if (grid) {
+            appendScreenshotsToGrid(grid, screenshots);
+        }
+        updateScreenshotLoadStatus(section);
+
+        const scroll = section.querySelector('.thumb-scroll');
+        if (scroll && paging.hasMore && scroll.scrollHeight - scroll.clientHeight < 240) {
+            requestAnimationFrame(() => loadNextScreenshotPage(section));
+        } else {
+            scheduleNextScreenshotPage(section);
+        }
+    } catch (e) {
+        if (uiState.screenshotPaging.requestId === requestId) {
+            paging.isLoading = false;
+            uiState.lastError = e.message;
+            renderUi();
+        }
+    }
+}
+
+function ensureScreenshotPageLoading(section) {
+    const paging = uiState.screenshotPaging;
+    const totalCount = uiState.model?.activeGroup?.count || paging.totalCount || 0;
+    if (!paging.groupId || paging.items.length > 0 || paging.isLoading || totalCount <= 0) return;
+
+    if (!paging.hasMore) {
+        paging.offset = 0;
+        paging.hasMore = true;
+    }
+
+    requestAnimationFrame(() => loadNextScreenshotPage(section));
+}
+
+function applySavedScreenshotEvent(message) {
+    const groupId = typeof message?.groupId === 'string' ? message.groupId : null;
+    const screenshot = message?.screenshot;
+    if (!groupId || !screenshot || uiState.model?.activeGroupId !== groupId) return false;
+
+    const paging = uiState.screenshotPaging;
+    if (paging.groupId !== groupId) {
+        resetScreenshotPaging(groupId, uiState.model.activeGroup?.count || 0);
+    }
+
+    paging.totalCount += 1;
+    paging.offset += 1;
+    uiState.model.activeGroup.count = (uiState.model.activeGroup.count || 0) + 1;
+
+    if (Array.isArray(uiState.model.groups)) {
+        uiState.model.groups = uiState.model.groups.map((group) => (
+            group.id === groupId ? { ...group, count: (group.count || 0) + 1, updatedAt: Date.now() } : group
+        ));
+    }
+
+    paging.items.unshift(screenshot);
+    const activeSection = document.querySelector('.screenshots-section');
+    const grid = activeSection?.querySelector('.thumb-grid');
+    const empty = activeSection?.querySelector('.empty');
+
+    if (grid) {
+        prependScreenshotToGrid(grid, screenshot);
+        return true;
+    }
+
+    if (empty) {
+        renderUi();
+        return true;
+    }
+
+    renderUi();
+    return true;
 }
 
 function openLightbox(screenshot) {
@@ -343,64 +575,36 @@ function renderActiveGroupState(container, model) {
     container.appendChild(createActiveGroupTitleSection(model));
 
     const screenshotsSection = document.createElement('section');
-    screenshotsSection.className = 'section scrollable';
+    screenshotsSection.className = 'section scrollable screenshots-section';
     screenshotsSection.innerHTML = `<h3 class="section-title"><span class="material-symbols-rounded" style="font-size:18px">image</span>${getMessage('uiSavedImagesTitle')}</h3>`;
 
-    if (!model.screenshots || model.screenshots.length === 0) {
+    const paging = uiState.screenshotPaging;
+    if ((model.activeGroup?.count || 0) === 0) {
         screenshotsSection.innerHTML += `<p class="empty">${getMessage('uiNoImagesInShelf')}</p>`;
     } else {
         const scroll = document.createElement('div');
         scroll.className = 'thumb-scroll';
         const grid = document.createElement('div');
         grid.className = `thumb-grid size-${uiState.thumbSize}`;
+        appendScreenshotsToGrid(grid, paging.items);
 
-        const CHUNK_SIZE = 15; // 1回に描画する枚数
-        let currentIndex = 0;
-
-        function renderNextChunk() {
-            const chunk = model.screenshots.slice(currentIndex, currentIndex + CHUNK_SIZE);
-            chunk.forEach(screenshot => {
-                const item = document.createElement('div');
-                item.className = 'thumb-item';
-
-                const img = document.createElement('img');
-                img.loading = 'lazy'; // 画像の遅延読み込み
-                img.src = screenshot.imageDataUrl;
-                img.alt = getMessage('uiSavedImageThumbnailAlt');
-
-                const delBtn = document.createElement('button');
-                delBtn.className = 'thumb-delete';
-                delBtn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px">close</span>';
-                delBtn.title = getMessage('uiDeleteImageTitle');
-                delBtn.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    await sendRuntimeMessage(MESSAGE_TYPES.DELETE_SCREENSHOT, { id: screenshot.id });
-                    refreshUi();
-                });
-
-                const meta = document.createElement('span');
-                meta.className = 'thumb-meta';
-                meta.textContent = screenshot.name;
-                meta.title = screenshot.name;
-
-                item.append(img, delBtn, meta);
-                item.addEventListener('click', () => openLightbox(screenshot));
-                grid.appendChild(item);
-            });
-
-            currentIndex += CHUNK_SIZE;
-            if (currentIndex < model.screenshots.length) {
-                // UIスレッドをブロックしないよう遅延処理
-                requestAnimationFrame(() => {
-                    setTimeout(renderNextChunk, 10);
-                });
-            }
-        }
-
-        renderNextChunk();
+        const loadStatus = document.createElement('p');
+        loadStatus.className = 'empty thumb-load-status';
+        loadStatus.hidden = true;
 
         scroll.appendChild(grid);
+        scroll.appendChild(loadStatus);
+        scroll.addEventListener('scroll', () => {
+            const remaining = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
+            if (remaining < 240) {
+                loadNextScreenshotPage(screenshotsSection);
+            }
+        });
+
         screenshotsSection.appendChild(scroll);
+
+        updateScreenshotLoadStatus(screenshotsSection);
+        ensureScreenshotPageLoading(screenshotsSection);
     }
     container.appendChild(screenshotsSection);
 }
@@ -434,6 +638,7 @@ function renderUi() {
 async function refreshUi() {
     try {
         uiState.model = await sendRuntimeMessage(MESSAGE_TYPES.GET_UI_MODEL);
+        syncScreenshotPagingWithModel();
         //ストレージからサイズ設定を取得
         const items = await new Promise(resolve => chrome.storage.local.get(['thumbSize'], resolve));
         uiState.thumbSize = items.thumbSize || 'medium';
@@ -449,6 +654,15 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return;
 
     if (
+        suppressNextScreenshotStorageRefresh &&
+        Object.keys(changes).length === 1 &&
+        changes.groupsMetadata
+    ) {
+        suppressNextScreenshotStorageRefresh = false;
+        return;
+    }
+
+    if (
         suppressNextGroupsMetadataRefresh &&
         Object.keys(changes).length === 1 &&
         changes.groupsMetadata
@@ -462,6 +676,15 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     }
 
     refreshUi();
+});
+
+chrome.runtime.onMessage.addListener((message) => {
+    if (message?.type !== EVENT_TYPES.SCREENSHOT_SAVED) return;
+
+    suppressNextScreenshotStorageRefresh = true;
+    if (!applySavedScreenshotEvent(message)) {
+        refreshUi();
+    }
 });
 
 function initSettings() {

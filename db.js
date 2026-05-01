@@ -2,22 +2,23 @@
 
 const clipShelfDB = new Dexie('ClipShelfDB');
 
-clipShelfDB.version(1).stores({
-    screenshots: '++id, groupId, imageBlob, pageUrl, timestamp',
-});
-
-// nameを追加したバージョン2を定義
-clipShelfDB.version(2).stores({
-    screenshots: '++id, groupId, imageBlob, pageUrl, timestamp, name',
+clipShelfDB.version(4).stores({
+    screenshots: '++id, groupId, [groupId+timestamp]',
 });
 
 async function addScreenshot(record) {
     return clipShelfDB.table('screenshots').add(record);
 }
 
-async function getScreenshotsByGroup(groupId) {
-    const rows = await clipShelfDB.table('screenshots').where('groupId').equals(groupId).toArray();
-    return rows.sort((a, b) => b.timestamp - a.timestamp);
+async function getScreenshotsByGroupPage(groupId, offset = 0, limit = 30) {
+    return clipShelfDB
+        .table('screenshots')
+        .where('[groupId+timestamp]')
+        .between([groupId, Dexie.minKey], [groupId, Dexie.maxKey])
+        .reverse()
+        .offset(Math.max(0, Number(offset) || 0))
+        .limit(Math.max(1, Number(limit) || 30))
+        .toArray();
 }
 
 async function deleteScreenshotById(id) {
@@ -34,13 +35,21 @@ async function getScreenshotCountsByGroupIds(groupIds) {
         return counts;
     }
 
-    const rows = await clipShelfDB.table('screenshots').where('groupId').anyOf(groupIds).toArray();
-    rows.forEach((row) => {
-        const groupId = row.groupId;
-        counts[groupId] = (counts[groupId] || 0) + 1;
-    });
+    await Promise.all(
+        groupIds.map(async (groupId) => {
+            counts[groupId] = await clipShelfDB.table('screenshots').where('groupId').equals(groupId).count();
+        }),
+    );
 
     return counts;
+}
+
+async function getScreenshotCountByGroupId(groupId) {
+    if (typeof groupId !== 'string' || groupId.trim() === '') {
+        return 0;
+    }
+
+    return clipShelfDB.table('screenshots').where('groupId').equals(groupId).count();
 }
 
 async function getTotalScreenshotCount() {
@@ -50,9 +59,10 @@ async function getTotalScreenshotCount() {
 self.ClipShelfDB = {
     db: clipShelfDB,
     addScreenshot,
-    getScreenshotsByGroup,
+    getScreenshotsByGroupPage,
     deleteScreenshotById,
     deleteScreenshotsByGroup,
     getScreenshotCountsByGroupIds,
+    getScreenshotCountByGroupId,
     getTotalScreenshotCount,
 };
