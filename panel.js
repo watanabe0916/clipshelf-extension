@@ -340,6 +340,7 @@ function applySavedScreenshotEvent(message) {
 
     if (grid) {
         prependScreenshotToGrid(grid, screenshot);
+        renderActiveGroupTitleOnly();
         return true;
     }
 
