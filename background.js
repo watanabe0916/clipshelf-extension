@@ -608,7 +608,7 @@ async function renameGroup(payload) {
     };
 
     await setStorage({ groupsMetadata });
-    return { groupId };
+    return { groupId, name: groupsMetadata[groupId].name };
 }
 
 async function setActiveGroup(payload) {

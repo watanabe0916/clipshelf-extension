@@ -20,6 +20,20 @@ const uiState = {
     thumbSize: 'medium'
 };
 
+let suppressNextGroupsMetadataRefresh = false;
+let suppressGroupsMetadataRefreshTimer = null;
+
+function suppressNextLocalGroupsMetadataRefresh() {
+    suppressNextGroupsMetadataRefresh = true;
+    if (suppressGroupsMetadataRefreshTimer) {
+        clearTimeout(suppressGroupsMetadataRefreshTimer);
+    }
+    suppressGroupsMetadataRefreshTimer = setTimeout(() => {
+        suppressNextGroupsMetadataRefresh = false;
+        suppressGroupsMetadataRefreshTimer = null;
+    }, 1000);
+}
+
 window.addEventListener('beforeunload', () => {
     chrome.storage.local.set({
         uiPanelLeft: window.screenX,
@@ -66,6 +80,44 @@ function createIconButton(iconName, className, onClick, titleText = '') {
     btn.innerHTML = `<span class="material-symbols-rounded" style="font-size:22px">${iconName}</span>`;
     btn.addEventListener('click', onClick);
     return btn;
+}
+
+function normalizeDisplayName(name, fallback = 'Untitled Group') {
+    if (typeof name !== 'string') return fallback;
+    const trimmed = name.trim();
+    return trimmed || fallback;
+}
+
+function applyGroupNameToModel(groupId, name) {
+    if (!uiState.model || !groupId) return;
+
+    const displayName = normalizeDisplayName(name);
+    if (uiState.model.activeGroup?.id === groupId) {
+        uiState.model.activeGroup.name = displayName;
+    }
+
+    if (Array.isArray(uiState.model.groups)) {
+        uiState.model.groups = uiState.model.groups.map((group) => (
+            group.id === groupId ? { ...group, name: displayName } : group
+        ));
+    }
+}
+
+function renderActiveGroupTitleOnly() {
+    if (!uiState.model?.activeGroup) {
+        renderUi();
+        return;
+    }
+
+    const container = document.getElementById('app-container');
+    const currentTitle = container.querySelector('.active-group-title-section');
+    const nextTitle = createActiveGroupTitleSection(uiState.model);
+
+    if (currentTitle) {
+        currentTitle.replaceWith(nextTitle);
+    } else {
+        renderUi();
+    }
 }
 
 function openLightbox(screenshot) {
@@ -211,10 +263,10 @@ function renderNoActiveGroupState(container, model) {
     container.appendChild(listSection);
 }
 
-function renderActiveGroupState(container, model) {
+function createActiveGroupTitleSection(model) {
     const activeGroup = model.activeGroup;
     const titleSection = document.createElement('section');
-    titleSection.className = 'section';
+    titleSection.className = 'section active-group-title-section';
     const titleRow = document.createElement('div');
     titleRow.className = 'inline-row active-group-row';
 
@@ -228,13 +280,35 @@ function renderActiveGroupState(container, model) {
         rInput.className = 'rename-input';
         rInput.value = activeGroup.name;
         const saveBtn = createButton(getMessage('uiButtonSave'), 'btn primary', async () => {
-            await sendRuntimeMessage(MESSAGE_TYPES.RENAME_GROUP, { groupId: activeGroup.id, name: rInput.value });
+            const previousName = activeGroup.name;
+            const requestedName = rInput.value;
+
+            suppressNextLocalGroupsMetadataRefresh();
+            applyGroupNameToModel(activeGroup.id, requestedName);
             uiState.editingGroupId = null;
-            refreshUi();
+            uiState.lastError = '';
+            renderActiveGroupTitleOnly();
+
+            try {
+                const result = await sendRuntimeMessage(MESSAGE_TYPES.RENAME_GROUP, { groupId: activeGroup.id, name: rInput.value });
+                if (result?.name) {
+                    applyGroupNameToModel(activeGroup.id, result.name);
+                    renderActiveGroupTitleOnly();
+                }
+            } catch (e) {
+                suppressNextGroupsMetadataRefresh = false;
+                if (suppressGroupsMetadataRefreshTimer) {
+                    clearTimeout(suppressGroupsMetadataRefreshTimer);
+                    suppressGroupsMetadataRefreshTimer = null;
+                }
+                applyGroupNameToModel(activeGroup.id, previousName);
+                uiState.lastError = e.message;
+                renderUi();
+            }
         });
         const cancelBtn = createButton(getMessage('uiButtonCancel'), 'btn secondary', () => {
             uiState.editingGroupId = null;
-            refreshUi();
+            renderActiveGroupTitleOnly();
         });
         titleRow.append(rInput, saveBtn, cancelBtn, endBtn);
     } else {
@@ -250,7 +324,7 @@ function renderActiveGroupState(container, model) {
         const actions = document.createElement('div');
         actions.className = 'active-group-actions';
         actions.append(
-            createIconButton('edit', 'icon-btn', () => { uiState.editingGroupId = activeGroup.id; refreshUi(); }, getMessage('uiButtonRename')),
+            createIconButton('edit', 'icon-btn', () => { uiState.editingGroupId = activeGroup.id; renderActiveGroupTitleOnly(); }, getMessage('uiButtonRename')),
             createIconButton('delete', 'icon-btn danger', async () => {
                 if (confirm(getMessage('uiConfirmDeleteShelf'))) {
                     await sendRuntimeMessage(MESSAGE_TYPES.DELETE_GROUP, { groupId: activeGroup.id });
@@ -262,7 +336,11 @@ function renderActiveGroupState(container, model) {
         titleRow.append(meta, actions);
     }
     titleSection.appendChild(titleRow);
-    container.appendChild(titleSection);
+    return titleSection;
+}
+
+function renderActiveGroupState(container, model) {
+    container.appendChild(createActiveGroupTitleSection(model));
 
     const screenshotsSection = document.createElement('section');
     screenshotsSection.className = 'section scrollable';
@@ -368,7 +446,22 @@ async function refreshUi() {
 }
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === 'local') refreshUi();
+    if (areaName !== 'local') return;
+
+    if (
+        suppressNextGroupsMetadataRefresh &&
+        Object.keys(changes).length === 1 &&
+        changes.groupsMetadata
+    ) {
+        suppressNextGroupsMetadataRefresh = false;
+        if (suppressGroupsMetadataRefreshTimer) {
+            clearTimeout(suppressGroupsMetadataRefreshTimer);
+            suppressGroupsMetadataRefreshTimer = null;
+        }
+        return;
+    }
+
+    refreshUi();
 });
 
 function initSettings() {
