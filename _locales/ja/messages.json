@@ -3,7 +3,7 @@
         "message": "ClipShelf"
     },
     "extDescription": {
-        "message": "切り抜き画像とページURLを名前付きグループに保存します。"
+        "message": "Web上の必要な部分だけをサクッと切り抜き！画像と参照元URLを「Shelf」に綺麗に整理・保存できるキャプチャ拡張機能です。"
     },
     "uiCreateNewShelfTitle": {
         "message": "新しい棚を作成"
