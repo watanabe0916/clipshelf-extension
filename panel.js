@@ -480,7 +480,7 @@ function openLightbox(screenshot) {
         openLinkBtn.disabled = true;
     }
 
-    const renameBtn = createButton(getMessage('uiButtonRename'), 'btn lightbox-open-link', async (e) => {
+    const renameBtn = createButton(getMessage('uiButtonRename'), 'lightbox-close', async (e) => {
         e.stopPropagation();
         renameBtn.disabled = true;
         try {
@@ -492,7 +492,7 @@ function openLightbox(screenshot) {
         }
     });
     renameBtn.title = getMessage('uiButtonRename');
-    renameBtn.innerHTML = `<span class="material-symbols-rounded" style="font-size:14px">edit</span>`;
+    renameBtn.innerHTML = `<span class="material-symbols-rounded" style="font-size:20px;">edit</span>`;
 
     const closeBtn = document.createElement('button');
     closeBtn.className = 'lightbox-close';
