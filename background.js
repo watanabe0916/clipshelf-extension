@@ -409,6 +409,10 @@ async function blobToDataUrl(blob) {
     return `data:${mimeType};base64,${base64}`;
 }
 
+function getUnnamedScreenshotName() {
+    return chrome.i18n.getMessage('uiUnnamedScreenshot') || 'Untitled image';
+}
+
 async function cropDataUrlToBlob(dataUrl, selection) {
     const sourceBlob = await dataUrlToBlob(dataUrl);
     const bitmap = await createImageBitmap(sourceBlob);
@@ -601,7 +605,7 @@ async function getScreenshotsPage(payload) {
             groupId: screenshot.groupId,
             pageUrl: screenshot.pageUrl || '',
             timestamp: screenshot.timestamp,
-            name: screenshot.name || '名称未設定',
+            name: screenshot.name || getUnnamedScreenshotName(),
             imageDataUrl: await blobToDataUrl(screenshot.imageBlob),
         })),
     );

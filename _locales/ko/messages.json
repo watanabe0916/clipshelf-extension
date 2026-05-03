@@ -145,5 +145,8 @@
     },
     "uiBugReport": {
         "message": "버그 신고"
+    },
+    "uiUnnamedScreenshot": {
+        "message": "이름 없는 이미지"
     }
 }

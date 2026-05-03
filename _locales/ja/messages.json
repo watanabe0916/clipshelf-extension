@@ -148,5 +148,8 @@
     },
     "uiBugReport": {
         "message": "不具合を報告"
+    },
+    "uiUnnamedScreenshot": {
+        "message": "名称未設定"
     }
 }

@@ -145,5 +145,8 @@
     },
     "uiBugReport": {
         "message": "Informar de un error"
+    },
+    "uiUnnamedScreenshot": {
+        "message": "Imagen sin título"
     }
 }

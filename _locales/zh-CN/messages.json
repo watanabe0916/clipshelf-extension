@@ -145,5 +145,8 @@
     },
     "uiBugReport": {
         "message": "报告错误"
+    },
+    "uiUnnamedScreenshot": {
+        "message": "未命名图片"
     }
 }
