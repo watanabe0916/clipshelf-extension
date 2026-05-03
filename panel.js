@@ -7,6 +7,7 @@ const MESSAGE_TYPES = {
     SET_ACTIVE_GROUP: 'CLIPSHELF_SET_ACTIVE_GROUP',
     END_SAVE_MODE: 'CLIPSHELF_END_SAVE_MODE',
     DELETE_SCREENSHOT: 'CLIPSHELF_DELETE_SCREENSHOT',
+    RENAME_SCREENSHOT: 'CLIPSHELF_RENAME_SCREENSHOT',
 };
 
 const ACTION_TYPES = {
@@ -175,6 +176,7 @@ function renderActiveGroupTitleOnly() {
 function createScreenshotItem(screenshot) {
     const item = document.createElement('div');
     item.className = 'thumb-item';
+    item.dataset.screenshotId = String(screenshot.id);
 
     const img = document.createElement('img');
     img.loading = 'lazy';
@@ -216,6 +218,28 @@ function appendScreenshotsToGrid(grid, screenshots) {
 
 function prependScreenshotToGrid(grid, screenshot) {
     grid.prepend(createScreenshotItem(screenshot));
+}
+
+function applyScreenshotName(id, name) {
+    const screenshotId = Number(id);
+    const displayName = normalizeDisplayName(name, getMessage('uiUnnamedScreenshot'));
+
+    uiState.screenshotPaging.items = uiState.screenshotPaging.items.map((item) => (
+        Number(item.id) === screenshotId ? { ...item, name: displayName } : item
+    ));
+
+    document.querySelectorAll('.thumb-item').forEach((itemElement) => {
+        const itemId = Number(itemElement.dataset.screenshotId);
+        if (itemId !== screenshotId) return;
+
+        const meta = itemElement.querySelector('.thumb-meta');
+        if (meta) {
+            meta.textContent = displayName;
+            meta.title = displayName;
+        }
+    });
+
+    return displayName;
 }
 
 function applyDeletedScreenshot(screenshot, itemElement) {
@@ -396,6 +420,25 @@ function applySavedScreenshotEvent(message) {
     return true;
 }
 
+async function renameScreenshotFromLightbox(screenshot, imageElement, captionElement) {
+    const currentName = screenshot.name || getMessage('uiUnnamedScreenshot');
+    const nextName = window.prompt(getMessage('uiButtonRename'), currentName);
+    if (nextName === null) return;
+
+    const result = await sendRuntimeMessage(MESSAGE_TYPES.RENAME_SCREENSHOT, {
+        id: screenshot.id,
+        name: nextName,
+    });
+    const displayName = applyScreenshotName(screenshot.id, result?.name || nextName);
+    screenshot.name = displayName;
+    if (imageElement) {
+        imageElement.alt = displayName;
+    }
+    if (captionElement) {
+        captionElement.textContent = displayName;
+    }
+}
+
 function openLightbox(screenshot) {
     const container = document.body;
 
@@ -408,7 +451,11 @@ function openLightbox(screenshot) {
     const image = document.createElement('img');
     image.className = 'lightbox-image';
     image.src = screenshot.imageDataUrl;
-    image.alt = getMessage('uiSavedImageAlt');
+    image.alt = screenshot.name || getMessage('uiSavedImageAlt');
+
+    const caption = document.createElement('div');
+    caption.className = 'lightbox-caption';
+    caption.textContent = screenshot.name || getMessage('uiUnnamedScreenshot');
 
     const actions = document.createElement('div');
     actions.className = 'lightbox-actions';
@@ -433,6 +480,20 @@ function openLightbox(screenshot) {
         openLinkBtn.disabled = true;
     }
 
+    const renameBtn = createButton(getMessage('uiButtonRename'), 'btn lightbox-open-link', async (e) => {
+        e.stopPropagation();
+        renameBtn.disabled = true;
+        try {
+            await renameScreenshotFromLightbox(screenshot, image, caption);
+        } catch (error) {
+            uiState.lastError = error.message;
+        } finally {
+            renameBtn.disabled = false;
+        }
+    });
+    renameBtn.title = getMessage('uiButtonRename');
+    renameBtn.innerHTML = `<span class="material-symbols-rounded" style="font-size:14px">edit</span>`;
+
     const closeBtn = document.createElement('button');
     closeBtn.className = 'lightbox-close';
     closeBtn.title = getMessage('uiButtonClose');
@@ -446,8 +507,14 @@ function openLightbox(screenshot) {
         if (e.target === overlay) overlay.remove();
     });
 
-    actions.append(openLinkBtn, closeBtn);
-    inner.append(image, actions);
+    const rightActions = document.createElement('div');
+    rightActions.style.display = 'flex';
+    rightActions.style.gap = '8px';
+    rightActions.style.alignItems = 'center';
+    rightActions.append(renameBtn, closeBtn);
+
+    actions.append(openLinkBtn, rightActions);
+    inner.append(image, actions, caption);
     overlay.appendChild(inner);
     container.appendChild(overlay);
 }

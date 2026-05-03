@@ -22,6 +22,7 @@ const MESSAGE_TYPES = {
     SET_ACTIVE_GROUP: 'CLIPSHELF_SET_ACTIVE_GROUP',
     END_SAVE_MODE: 'CLIPSHELF_END_SAVE_MODE',
     DELETE_SCREENSHOT: 'CLIPSHELF_DELETE_SCREENSHOT',
+    RENAME_SCREENSHOT: 'CLIPSHELF_RENAME_SCREENSHOT',
 };
 
 const EVENT_TYPES = {
@@ -749,6 +750,20 @@ async function deleteScreenshot(payload) {
     return { deleted: true };
 }
 
+async function renameScreenshot(payload) {
+    const id = Number(payload?.id);
+    if (!Number.isFinite(id)) {
+        throw new Error('A valid screenshot id is required.');
+    }
+
+    const name = typeof payload?.name === 'string' && payload.name.trim() !== ''
+        ? payload.name.trim()
+        : getUnnamedScreenshotName();
+
+    await self.ClipShelfDB.renameScreenshotById(id, name);
+    return { id, name };
+}
+
 function isNoReceiverError(error) {
     const message = String(error?.message || '');
     return (
@@ -959,6 +974,8 @@ async function routeRuntimeMessage(message, sender) {
             return endSaveMode();
         case MESSAGE_TYPES.DELETE_SCREENSHOT:
             return deleteScreenshot(message);
+        case MESSAGE_TYPES.RENAME_SCREENSHOT:
+            return renameScreenshot(message);
         default:
             return null;
     }

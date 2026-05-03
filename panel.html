@@ -451,6 +451,25 @@
             transform: scale(1.05);
         }
 
+        .lightbox-caption {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            pointer-events: none;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 80%;
+            backdrop-filter: blur(4px);
+            z-index: 10;
+        }
+
         /* サムネイルサイズ設定 (Mediumはデフォルトの.thumb-gridを適用) */
         .thumb-grid.size-small {
             grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));

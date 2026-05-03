@@ -25,6 +25,10 @@ async function deleteScreenshotById(id) {
     return clipShelfDB.table('screenshots').delete(id);
 }
 
+async function renameScreenshotById(id, name) {
+    return clipShelfDB.table('screenshots').update(id, { name });
+}
+
 async function deleteScreenshotsByGroup(groupId) {
     return clipShelfDB.table('screenshots').where('groupId').equals(groupId).delete();
 }
@@ -61,6 +65,7 @@ self.ClipShelfDB = {
     addScreenshot,
     getScreenshotsByGroupPage,
     deleteScreenshotById,
+    renameScreenshotById,
     deleteScreenshotsByGroup,
     getScreenshotCountsByGroupIds,
     getScreenshotCountByGroupId,
