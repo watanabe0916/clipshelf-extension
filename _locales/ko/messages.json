@@ -3,7 +3,7 @@
         "message": "ClipShelf Extension"
     },
     "extDescription": {
-        "message": "잘라낸 스크린샷과 페이지 URL을 지정된 그룹에 저장합니다."
+        "message": "웹 화면을 자유롭게 캡처하고 정리하세요! 이미지와 URL을 'Shelf'에 저장하는 심플한 스크랩 도구입니다. 로컬 저장으로 안전합니다."
     },
     "uiCreateNewShelfTitle": {
         "message": "새 선반 만들기"
