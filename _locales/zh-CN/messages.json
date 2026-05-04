@@ -3,7 +3,7 @@
         "message": "ClipShelf Extension"
     },
     "extDescription": {
-        "message": "将裁剪的屏幕截图和页面URL保存到命名的分组中。"
+        "message": "轻松剪裁并组织网页内容！将图片和URL保存到自定义的“Shelf”中。快速、轻量且完全本地存储。"
     },
     "uiCreateNewShelfTitle": {
         "message": "创建新书架"
