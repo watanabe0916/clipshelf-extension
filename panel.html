@@ -517,7 +517,15 @@
             --thumb-gap: 16px;
         }
 
-        .thumb-grid.size-large .thumb-meta {
+        /* 最大: 常に1列にして、パネル幅いっぱいまで拡大する */
+        .thumb-grid.size-xlarge {
+            --thumb-min: 100%;
+            --thumb-max: none;
+            --thumb-gap: 16px;
+        }
+
+        .thumb-grid.size-large .thumb-meta,
+        .thumb-grid.size-xlarge .thumb-meta {
             font-size: 12px;
             padding: 8px 10px;
         }
@@ -581,10 +589,11 @@
 
         <div style="margin-bottom: 6px;">
             <label id="labelThumbSize" style="display: block; margin-bottom: 4px;"></label>
-            <div style="display: flex; gap: 12px;">
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                 <label><input type="radio" name="thumbSize" value="small"> <span id="labelSizeSmall"></span></label>
                 <label><input type="radio" name="thumbSize" value="medium"> <span id="labelSizeMedium"></span></label>
                 <label><input type="radio" name="thumbSize" value="large"> <span id="labelSizeLarge"></span></label>
+                <label><input type="radio" name="thumbSize" value="xlarge"> <span id="labelSizeXLarge"></span></label>
             </div>
         </div>
 

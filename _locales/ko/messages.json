@@ -137,6 +137,9 @@
     "uiThumbSizeLarge": {
         "message": "크게"
     },
+    "uiThumbSizeXLarge": {
+        "message": "최대"
+    },
     "uiThumbSizeMedium": {
         "message": "보통"
     },

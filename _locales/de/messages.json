@@ -137,6 +137,9 @@
     "uiThumbSizeLarge": {
         "message": "Groß"
     },
+    "uiThumbSizeXLarge": {
+        "message": "Maximal"
+    },
     "uiThumbSizeMedium": {
         "message": "Mittel"
     },

@@ -822,6 +822,8 @@ function initSettings() {
     if(labelSizeMedium) labelSizeMedium.textContent = getMessage('uiThumbSizeMedium');
     const labelSizeSmall = document.getElementById('labelSizeSmall');
     if(labelSizeSmall) labelSizeSmall.textContent = getMessage('uiThumbSizeSmall');
+    const labelSizeXLarge = document.getElementById('labelSizeXLarge');
+    if(labelSizeXLarge) labelSizeXLarge.textContent = getMessage('uiThumbSizeXLarge');
 
     btnSave.textContent = getMessage('uiButtonSaveSettings');
 

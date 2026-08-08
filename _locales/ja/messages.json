@@ -140,6 +140,9 @@
     "uiThumbSizeLarge": {
         "message": "大"
     },
+    "uiThumbSizeXLarge": {
+        "message": "最大"
+    },
     "uiThumbSizeMedium": {
         "message": "中"
     },
