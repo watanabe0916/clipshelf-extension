@@ -21,6 +21,14 @@ async function getScreenshotsByGroupPage(groupId, offset = 0, limit = 30) {
         .toArray();
 }
 
+async function getScreenshotById(id) {
+    return clipShelfDB.table('screenshots').get(Number(id));
+}
+
+async function setScreenshotThumbnail(id, thumbBlob) {
+    return clipShelfDB.table('screenshots').update(Number(id), { thumbBlob });
+}
+
 async function deleteScreenshotById(id) {
     return clipShelfDB.table('screenshots').delete(id);
 }
@@ -64,6 +72,8 @@ self.ClipShelfDB = {
     db: clipShelfDB,
     addScreenshot,
     getScreenshotsByGroupPage,
+    getScreenshotById,
+    setScreenshotThumbnail,
     deleteScreenshotById,
     renameScreenshotById,
     deleteScreenshotsByGroup,

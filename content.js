@@ -50,6 +50,7 @@
 
     // キーが離されるのを待機するための変数
     let pendingCapture = null;
+    let dragListenersAttached = false;
 
     function normalizeStorageId(value) {
         if (typeof value !== 'string') return null;
@@ -233,6 +234,7 @@
     function resetSelectionInteractionState() {
         selectionState.isDragging = false;
         selectionState.activeShelfId = null;
+        detachDragListeners();
         removeOverlay();
 
         selectionState.captureTarget = null;
@@ -258,8 +260,31 @@
         return userInput.trim() || defaultName;
     }
 
+    // ドラッグ中しか使わないリスナーは常駐させない。
+    // 特に pointermove の常時登録(passive:false)はページ側の入力処理を重くする。
+    function attachDragListeners() {
+        if (dragListenersAttached) return;
+        dragListenersAttached = true;
+        document.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false });
+        document.addEventListener('pointerup', handlePointerUp, { capture: true, passive: false });
+        document.addEventListener('pointercancel', handlePointerCancel, { capture: true, passive: false });
+        document.addEventListener('dragstart', blockNativeSelectionWhileDragging, true);
+        document.addEventListener('selectstart', blockNativeSelectionWhileDragging, true);
+    }
+
+    function detachDragListeners() {
+        if (!dragListenersAttached) return;
+        dragListenersAttached = false;
+        document.removeEventListener('pointermove', handlePointerMove, true);
+        document.removeEventListener('pointerup', handlePointerUp, true);
+        document.removeEventListener('pointercancel', handlePointerCancel, true);
+        document.removeEventListener('dragstart', blockNativeSelectionWhileDragging, true);
+        document.removeEventListener('selectstart', blockNativeSelectionWhileDragging, true);
+    }
+
     function beginSelection(event, activeShelfId) {
         selectionState.isDragging = true;
+        attachDragListeners();
         selectionState.startX = event.clientX;
         selectionState.startY = event.clientY;
         selectionState.lastX = event.clientX;
@@ -285,6 +310,7 @@
     function endSelection() {
         selectionState.isDragging = false;
         selectionState.activeShelfId = null;
+        detachDragListeners();
         removeOverlay();
 
         try {
@@ -345,6 +371,7 @@
     function finalizeSelection(eventX, eventY) {
         if (!selectionState.isDragging) return;
         selectionState.isDragging = false;
+        detachDragListeners();
 
         try {
             if (selectionState.captureTarget && selectionState.pointerId !== null) {
@@ -494,14 +521,12 @@
         }
     });
 
+    // 常駐させるのはドラッグ開始の検知に必要なものだけ。
+    // pointermove / pointerup / pointercancel / dragstart / selectstart は
+    // beginSelection() の中で登録し、ドラッグ終了時に解除する。
     document.addEventListener('keydown', handleKeyDown, true);
     document.addEventListener('keyup', handleKeyUp, true);
     document.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false });
-    document.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false });
-    document.addEventListener('pointerup', handlePointerUp, { capture: true, passive: false });
-    document.addEventListener('pointercancel', handlePointerCancel, { capture: true, passive: false });
-    document.addEventListener('dragstart', blockNativeSelectionWhileDragging, true);
-    document.addEventListener('selectstart', blockNativeSelectionWhileDragging, true);
     document.addEventListener('contextmenu', handleContextMenu, true);
     window.addEventListener('message', handleFrameCaptureMessage, true);
     window.addEventListener('blur', handleWindowBlur, true);

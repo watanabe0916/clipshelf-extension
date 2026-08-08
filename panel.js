@@ -8,6 +8,7 @@ const MESSAGE_TYPES = {
     END_SAVE_MODE: 'CLIPSHELF_END_SAVE_MODE',
     DELETE_SCREENSHOT: 'CLIPSHELF_DELETE_SCREENSHOT',
     RENAME_SCREENSHOT: 'CLIPSHELF_RENAME_SCREENSHOT',
+    GET_SCREENSHOT_IMAGE: 'CLIPSHELF_GET_SCREENSHOT_IMAGE',
 };
 
 const ACTION_TYPES = {
@@ -18,8 +19,17 @@ const EVENT_TYPES = {
     SCREENSHOT_SAVED: 'CLIPSHELF_SCREENSHOT_SAVED',
 };
 
-const SCREENSHOT_PAGE_SIZE = 10;
-const SCREENSHOT_AUTO_LOAD_DELAY_MS = 80;
+// これ以外のキーが変わってもUIの作り直しは不要
+const UI_RELEVANT_STORAGE_KEYS = new Set([
+    'groupsMetadata',
+    'activeGroupId',
+    'activeShelfId',
+    'thumbSize',
+]);
+
+const SCREENSHOT_PAGE_SIZE = 20;
+// スクロール末尾からこの距離まで近づいたら次ページを読む
+const SCREENSHOT_LOAD_THRESHOLD_PX = 240;
 
 const uiState = {
     model: null,
@@ -42,7 +52,6 @@ let suppressNextGroupsMetadataRefresh = false;
 let suppressGroupsMetadataRefreshTimer = null;
 let lastActiveGroupId = null;
 let suppressNextScreenshotStorageRefresh = false;
-let autoScreenshotLoadTimer = null;
 
 function suppressNextLocalGroupsMetadataRefresh() {
     suppressNextGroupsMetadataRefresh = true;
@@ -125,11 +134,6 @@ function applyGroupNameToModel(groupId, name) {
 }
 
 function resetScreenshotPaging(groupId, totalCount = 0) {
-    if (autoScreenshotLoadTimer) {
-        clearTimeout(autoScreenshotLoadTimer);
-        autoScreenshotLoadTimer = null;
-    }
-
     uiState.screenshotPaging = {
         groupId,
         items: [],
@@ -180,7 +184,8 @@ function createScreenshotItem(screenshot) {
 
     const img = document.createElement('img');
     img.loading = 'lazy';
-    img.src = screenshot.imageDataUrl;
+    img.decoding = 'async';
+    img.src = screenshot.thumbDataUrl || screenshot.imageDataUrl;
     img.alt = getMessage('uiSavedImageThumbnailAlt');
 
     const delBtn = document.createElement('button');
@@ -274,7 +279,7 @@ function applyDeletedScreenshot(screenshot, itemElement) {
     }
 
     if (activeSection) {
-        scheduleNextScreenshotPage(activeSection);
+        fillViewportIfNeeded(activeSection);
     }
 }
 
@@ -299,18 +304,18 @@ function updateScreenshotLoadStatus(section) {
     status.hidden = true;
 }
 
-function scheduleNextScreenshotPage(section) {
+// スクロール領域が埋まっていないときだけ追加で読む。
+// 埋まっている場合は、実際にスクロールされるまで読み込まない。
+function fillViewportIfNeeded(section) {
     const paging = uiState.screenshotPaging;
     if (!section?.isConnected || !paging.groupId || paging.isLoading || !paging.hasMore) return;
 
-    if (autoScreenshotLoadTimer) {
-        clearTimeout(autoScreenshotLoadTimer);
-    }
+    const scroll = section.querySelector('.thumb-scroll');
+    if (!scroll) return;
 
-    autoScreenshotLoadTimer = setTimeout(() => {
-        autoScreenshotLoadTimer = null;
-        loadNextScreenshotPage(section);
-    }, SCREENSHOT_AUTO_LOAD_DELAY_MS);
+    if (scroll.scrollHeight - scroll.clientHeight < SCREENSHOT_LOAD_THRESHOLD_PX) {
+        requestAnimationFrame(() => loadNextScreenshotPage(section));
+    }
 }
 
 async function loadNextScreenshotPage(section) {
@@ -351,13 +356,7 @@ async function loadNextScreenshotPage(section) {
             appendScreenshotsToGrid(grid, screenshots);
         }
         updateScreenshotLoadStatus(section);
-
-        const scroll = section.querySelector('.thumb-scroll');
-        if (scroll && paging.hasMore && scroll.scrollHeight - scroll.clientHeight < 240) {
-            requestAnimationFrame(() => loadNextScreenshotPage(section));
-        } else {
-            scheduleNextScreenshotPage(section);
-        }
+        fillViewportIfNeeded(section);
     } catch (e) {
         if (uiState.screenshotPaging.requestId === requestId) {
             paging.isLoading = false;
@@ -448,10 +447,22 @@ function openLightbox(screenshot) {
     const inner = document.createElement('div');
     inner.className = 'lightbox-inner';
 
+    // 先にサムネイルを出しておき、原寸画像は取得できしだい差し替える。
+    // 一覧が原寸を抱え込まなくて済むかわりに、ここで1件だけ読み込む。
     const image = document.createElement('img');
     image.className = 'lightbox-image';
-    image.src = screenshot.imageDataUrl;
+    image.src = screenshot.thumbDataUrl || screenshot.imageDataUrl || '';
     image.alt = screenshot.name || getMessage('uiSavedImageAlt');
+
+    void sendRuntimeMessage(MESSAGE_TYPES.GET_SCREENSHOT_IMAGE, { id: screenshot.id })
+        .then((result) => {
+            if (result?.imageDataUrl && image.isConnected) {
+                image.src = result.imageDataUrl;
+            }
+        })
+        .catch((error) => {
+            console.warn('ClipShelf: failed to load full-size image:', error);
+        });
 
     const caption = document.createElement('div');
     caption.className = 'lightbox-caption';
@@ -577,9 +588,13 @@ function renderNoActiveGroupState(container, model) {
                 nameArea.innerHTML = `
                     <span class="material-symbols-rounded shelf-icon" style="flex-shrink: 0;">library_books</span>
                     <div style="display: flex; flex-direction: column; flex: 1; min-width: 0;">
-                        <span class="group-name" title="${group.name}">${group.name}</span>
+                        <span class="group-name"></span>
                         <span class="count-pill">${getMessage('uiGroupImageCount', [String(group.count || 0)])}</span>
                     </div>`;
+                // シェルフ名はユーザー入力なのでHTMLとして解釈させない
+                const groupNameEl = nameArea.querySelector('.group-name');
+                groupNameEl.textContent = group.name;
+                groupNameEl.title = group.name;
 
                 const controls = document.createElement('div');
                 controls.className = 'group-controls';
@@ -660,9 +675,13 @@ function createActiveGroupTitleSection(model) {
         meta.innerHTML = `
             <span class="material-symbols-rounded shelf-icon" style="font-size:32px;">library_books</span>
             <div style="display:flex; flex-direction:column; min-width:0; flex:1; overflow:hidden;">
-                <strong class="group-name" style="font-size:16px;" title="${activeGroup.name}">${activeGroup.name}</strong>
+                <strong class="group-name" style="font-size:16px;"></strong>
                 <span class="count-pill">${getMessage('uiGroupImageCount', [String(activeGroup.count || 0)])}</span>
             </div>`;
+        // シェルフ名はユーザー入力なのでHTMLとして解釈させない
+        const metaName = meta.querySelector('.group-name');
+        metaName.textContent = activeGroup.name;
+        metaName.title = activeGroup.name;
 
         const actions = document.createElement('div');
         actions.className = 'active-group-actions';
@@ -707,10 +726,10 @@ function renderActiveGroupState(container, model) {
         scroll.appendChild(loadStatus);
         scroll.addEventListener('scroll', () => {
             const remaining = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
-            if (remaining < 240) {
+            if (remaining < SCREENSHOT_LOAD_THRESHOLD_PX) {
                 loadNextScreenshotPage(screenshotsSection);
             }
-        });
+        }, { passive: true });
 
         screenshotsSection.appendChild(scroll);
 
@@ -763,6 +782,9 @@ async function refreshUi() {
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return;
+
+    // ウィンドウ位置やキー設定など、表示に関係しないキーでは作り直さない
+    if (!Object.keys(changes).some((key) => UI_RELEVANT_STORAGE_KEYS.has(key))) return;
 
     if (
         suppressNextScreenshotStorageRefresh &&

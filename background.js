@@ -23,7 +23,14 @@ const MESSAGE_TYPES = {
     END_SAVE_MODE: 'CLIPSHELF_END_SAVE_MODE',
     DELETE_SCREENSHOT: 'CLIPSHELF_DELETE_SCREENSHOT',
     RENAME_SCREENSHOT: 'CLIPSHELF_RENAME_SCREENSHOT',
+    GET_SCREENSHOT_IMAGE: 'CLIPSHELF_GET_SCREENSHOT_IMAGE',
 };
+
+// 一覧用サムネイルの生成設定。
+// 一覧に原寸PNGを渡すとメモリ消費が桁違いになるため、必ず縮小版を経由させる。
+const THUMBNAIL_MAX_EDGE = 640;
+const THUMBNAIL_MIME = 'image/webp';
+const THUMBNAIL_QUALITY = 0.8;
 
 const EVENT_TYPES = {
     SCREENSHOT_SAVED: 'CLIPSHELF_SCREENSHOT_SAVED',
@@ -388,7 +395,8 @@ async function dataUrlToBlob(dataUrl) {
 
 function arrayBufferToBase64(arrayBuffer) {
     const bytes = new Uint8Array(arrayBuffer);
-    const chunkSize = 0x8000;
+    // スプレッド展開の引数が多すぎるとスタック上限に触れるため控えめな値にする
+    const chunkSize = 0x2000;
     let binary = '';
 
     for (let index = 0; index < bytes.length; index += chunkSize) {
@@ -448,6 +456,61 @@ async function cropDataUrlToBlob(dataUrl, selection) {
     }
 }
 
+// 一覧表示用に長辺 THUMBNAIL_MAX_EDGE まで縮小したWebPを作る。
+// 失敗しても保存自体は続行させたいので、呼び出し側でnullを許容する。
+async function createThumbnailBlob(sourceBlob) {
+    if (!(sourceBlob instanceof Blob)) {
+        return null;
+    }
+
+    const bitmap = await createImageBitmap(sourceBlob);
+
+    try {
+        const scale = Math.min(1, THUMBNAIL_MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+        const width = Math.max(1, Math.round(bitmap.width * scale));
+        const height = Math.max(1, Math.round(bitmap.height * scale));
+
+        const canvas = new OffscreenCanvas(width, height);
+        const context = canvas.getContext('2d', { alpha: true });
+        if (!context) {
+            return null;
+        }
+
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(bitmap, 0, 0, width, height);
+
+        return await canvas.convertToBlob({ type: THUMBNAIL_MIME, quality: THUMBNAIL_QUALITY });
+    } catch (error) {
+        console.warn('ClipShelf: failed to create thumbnail:', error);
+        return null;
+    } finally {
+        if (typeof bitmap.close === 'function') {
+            bitmap.close();
+        }
+    }
+}
+
+// 既存レコードにはサムネイルが無いため、初回参照時に生成してDBへ書き戻す。
+async function resolveThumbnailDataUrl(screenshot) {
+    if (screenshot?.thumbBlob instanceof Blob) {
+        return blobToDataUrl(screenshot.thumbBlob);
+    }
+
+    const thumbBlob = await createThumbnailBlob(screenshot?.imageBlob);
+    if (!thumbBlob) {
+        return blobToDataUrl(screenshot?.imageBlob);
+    }
+
+    try {
+        await self.ClipShelfDB.setScreenshotThumbnail(screenshot.id, thumbBlob);
+    } catch (error) {
+        console.warn('ClipShelf: failed to backfill thumbnail:', error);
+    }
+
+    return blobToDataUrl(thumbBlob);
+}
+
 async function persistCapturedSelection(payload, sender) {
     const selection = normalizeSelection(payload.selection);
     if (!selection) {
@@ -480,9 +543,12 @@ async function persistCapturedSelection(payload, sender) {
     const dataUrl = await captureVisibleTab(senderWindowId, { format: 'png' });
     const imageBlob = await cropDataUrlToBlob(dataUrl, selection);
 
+    const thumbBlob = await createThumbnailBlob(imageBlob);
+
     const screenshotRecord = {
         groupId: activeShelfId,
         imageBlob,
+        thumbBlob,
         pageUrl,
         timestamp: Date.now(),
         name: payload.customName || 'No name', // 追加: 名前を保存
@@ -494,14 +560,10 @@ async function persistCapturedSelection(payload, sender) {
         pageUrl,
         timestamp: screenshotRecord.timestamp,
         name: screenshotRecord.name,
-        imageDataUrl: await blobToDataUrl(imageBlob),
+        thumbDataUrl: await blobToDataUrl(thumbBlob || imageBlob),
     };
 
-    void sendMessageToTab(sender?.tab?.id, {
-        type: EVENT_TYPES.SCREENSHOT_SAVED,
-        groupId: activeShelfId,
-        screenshot: screenshotForUi,
-    });
+    // コンテンツスクリプトはこのイベントを購読していないため、タブへは送らない
     chrome.runtime.sendMessage({
         type: EVENT_TYPES.SCREENSHOT_SAVED,
         groupId: activeShelfId,
@@ -600,16 +662,19 @@ async function getScreenshotsPage(payload) {
     const limit = normalizePageSize(payload?.limit);
     const totalCount = await self.ClipShelfDB.getScreenshotCountByGroupId(groupId);
     const screenshots = await self.ClipShelfDB.getScreenshotsByGroupPage(groupId, offset, limit);
-    const screenshotsForUi = await Promise.all(
-        screenshots.map(async (screenshot) => ({
+
+    // 同時デコードでメモリが跳ねないよう、あえて逐次処理する
+    const screenshotsForUi = [];
+    for (const screenshot of screenshots) {
+        screenshotsForUi.push({
             id: screenshot.id,
             groupId: screenshot.groupId,
             pageUrl: screenshot.pageUrl || '',
             timestamp: screenshot.timestamp,
             name: screenshot.name || getUnnamedScreenshotName(),
-            imageDataUrl: await blobToDataUrl(screenshot.imageBlob),
-        })),
-    );
+            thumbDataUrl: await resolveThumbnailDataUrl(screenshot),
+        });
+    }
 
     const nextOffset = offset + screenshotsForUi.length;
     return {
@@ -619,6 +684,21 @@ async function getScreenshotsPage(payload) {
         totalCount,
         nextOffset,
     };
+}
+
+// 原寸画像は拡大表示のときだけ取り出す
+async function getScreenshotImage(payload) {
+    const id = Number(payload?.id);
+    if (!Number.isFinite(id)) {
+        throw new Error('A valid screenshot id is required.');
+    }
+
+    const screenshot = await self.ClipShelfDB.getScreenshotById(id);
+    if (!screenshot) {
+        return { id, imageDataUrl: null };
+    }
+
+    return { id, imageDataUrl: await blobToDataUrl(screenshot.imageBlob) };
 }
 
 async function createGroup(payload) {
@@ -867,34 +947,6 @@ async function toggleUiWindow() {
     return { toggled: true, action: 'created' };
 }
 
-chrome.windows.onRemoved.addListener((windowId) => {
-    if (windowId === uiWindowId) {
-        uiWindowId = null;
-        setStorage({ isUiOpen: false });
-    }
-});
-chrome.windows.onRemoved.addListener((windowId) => {
-    if (windowId === uiWindowId) {
-        uiWindowId = null;
-        setStorage({ isUiOpen: false });
-    }
-});
-
-chrome.windows.onRemoved.addListener((windowId) => {
-    if (windowId === uiWindowId) {
-        uiWindowId = null;
-        setStorage({ isUiOpen: false });
-    }
-});
-
-// ウィンドウが閉じられたことを検知する
-chrome.windows.onRemoved.addListener((windowId) => {
-    if (windowId === uiWindowId) {
-        uiWindowId = null;
-        setStorage({ isUiOpen: false });
-    }
-});
-
 // ウィンドウが閉じられたことを検知する
 chrome.windows.onRemoved.addListener((windowId) => {
     if (windowId === uiWindowId) {
@@ -976,6 +1028,8 @@ async function routeRuntimeMessage(message, sender) {
             return deleteScreenshot(message);
         case MESSAGE_TYPES.RENAME_SCREENSHOT:
             return renameScreenshot(message);
+        case MESSAGE_TYPES.GET_SCREENSHOT_IMAGE:
+            return getScreenshotImage(message);
         default:
             return null;
     }
