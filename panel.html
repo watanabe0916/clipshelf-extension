@@ -407,6 +407,22 @@
             pointer-events: none;
         }
 
+        /* 画像上のUI(操作ボタン・画像名)はホバー時のみ表示する */
+        .lightbox-actions,
+        .lightbox-caption {
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s ease, visibility 0.2s ease;
+        }
+
+        .lightbox-inner:hover .lightbox-actions,
+        .lightbox-inner:hover .lightbox-caption,
+        .lightbox-inner:focus-within .lightbox-actions,
+        .lightbox-inner:focus-within .lightbox-caption {
+            opacity: 1;
+            visibility: visible;
+        }
+
         .lightbox-actions .btn,
         .lightbox-close {
             pointer-events: auto;
